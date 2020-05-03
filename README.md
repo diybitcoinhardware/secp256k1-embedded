@@ -6,9 +6,9 @@
 
 **This repository** makes it easy to use the library with Arduino IDE, ARM Mbed and MicroPython. 
 
-For Arduino and Mbed it introduces a few hacks to get around their recusive build system. For MicroPython it defines [bindings](./mpy/libsecp256k1.c) that makes the library accessible from MicroPython.
+For Arduino and Mbed it introduces a few hacks to get around their recursive build system. For MicroPython it defines [bindings](./mpy/libsecp256k1.c) that makes the library accessible from MicroPython.
 
-Tested on ESP32 (M5Stack, TTGO) and STM32F469I-Discovery.
+Tested on ESP32 (M5Stack, TTGO) and STM32F469I-Discovery, but should work on any 32-bit MCU.
 
 # Installation
 
@@ -16,7 +16,7 @@ Tested on ESP32 (M5Stack, TTGO) and STM32F469I-Discovery.
 
 Clone with `--recursive` flag to the folder where you store user modules.
 
-Compile MicroPython for your board with flags. For example:
+Compile MicroPython for your board with user modules and `CFLAGS_EXTRA=-DMODULE_SECP256K1_ENABLED=1` flag. For example:
 
 ```sh
 make BOARD=STM32F469DISC USER_C_MODULES=../../../usermods CFLAGS_EXTRA=-DMODULE_SECP256K1_ENABLED=1
@@ -24,13 +24,13 @@ make BOARD=STM32F469DISC USER_C_MODULES=../../../usermods CFLAGS_EXTRA=-DMODULE_
 
 Here replace `STM32F469DISC` to your board name, `../../../usermods` to your path to usermods folder.
 
-Here is a python usage example: [`examples/secp256k1.py`](examples/secp256k1.py)
+Here is a usage example for MicroPython: [`examples/secp256k1.py`](examples/secp256k1.py)
 
 ## Arduino IDE
 
 Clone this repo with `--recursive` flag to the `Arduino/libraries/` folder (or download zip file and select `Sketch->Include Library->Add .ZIP Library`. 
 
-Check out the [example](examples/basic_example/basic_example.ino) to see it in action.
+Check out the [example](examples/basic_example/basic_example.ino) for Arduino to see it in action.
 
 ## ARM Mbed
 
@@ -60,7 +60,7 @@ Or you can use bare-metal mbed version:
 
 ## Usage
 
-A very basic example:
+A very basic example in C/C++:
 
 ```cpp
 // secp256k1 context

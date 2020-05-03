@@ -5,6 +5,10 @@ from binascii import hexlify
 def secp256k1_example():
     """Usage example for secp256k1 usermodule"""
 
+    # randomize context from time to time
+    # - it helps against sidechannel attacks
+    # secp256k1.context_randomize(os.urandom(32))
+
     # some random secret key
     secret = hashlib.sha256(b"secret key").digest()
 
