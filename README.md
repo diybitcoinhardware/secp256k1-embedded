@@ -18,11 +18,15 @@ Clone this repo with `--recursive` flag to the `Arduino/libraries/` folder (or d
 
 ### For Mbed:
 
-Clone this repo to the project folder, for Mbed-CLI use `mbed add https://github.com/diybitcoinhardware/secp256k1.git`, for online IDE do `Import Library` and put there a link to this repo.
+Clone this repo with `--recursive` flag to the project folder, or whatever folder you store libraries in. You can do it with Mbed-CLI as well:
 
-You can also import [this project](https://os.mbed.com/users/diybitcoinhardware/code/secp256k1_example/) and start from it.
+```sh
+mbed add https://github.com/diybitcoinhardware/secp256k1-embedded
+```
 
-Important! Library mostly uses stack, and mbed has pretty small default limitat for the stack size. You can increase the stack size in `mbed_app.json` file:
+Check out the [example](examples/mbed/main.cpp). You can also import [this project](https://os.mbed.com/users/diybitcoinhardware/code/secp256k1_example/) and start from it.
+
+**Important!** Library mostly uses stack, and mbed has pretty small default limitat for the stack size. You can increase the stack size in `mbed_app.json` file:
 
 ```json
 {
