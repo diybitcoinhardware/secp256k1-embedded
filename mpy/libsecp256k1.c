@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include "include/secp256k1.h"
 #include "include/secp256k1_preallocated.h"
+#include "include/secp256k1_recovery.h"
 #include "py/obj.h"
 #include "py/runtime.h"
 #include "py/builtin.h"
@@ -639,6 +640,59 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_combine(mp_uint_t n_args, const mp_obj_t *a
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_ec_pubkey_combine_obj, 2, usecp256k1_ec_pubkey_combine);
 
+/**************************** recoverable ***************************/
+
+// msg, secret, [callback, data]
+STATIC mp_obj_t usecp256k1_ecdsa_sign_recoverable(mp_uint_t n_args, const mp_obj_t *args){
+    maybe_init_ctx();
+    mp_nonce_data = NULL;
+    if(n_args < 2){
+        mp_raise_ValueError("Function requires at least two arguments: message and private key");
+        return mp_const_none;
+    }
+    mp_buffer_info_t msgbuf;
+    mp_get_buffer_raise(args[0], &msgbuf, MP_BUFFER_READ);
+    if(msgbuf.len != 32){
+        mp_raise_ValueError("Message should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    mp_buffer_info_t secbuf;
+    mp_get_buffer_raise(args[1], &secbuf, MP_BUFFER_READ);
+    if(secbuf.len != 32){
+        mp_raise_ValueError("Secret key should be 32 bytes long");
+        return mp_const_none;
+    }
+    secp256k1_ecdsa_recoverable_signature sig;
+    int res=0;
+    if(n_args == 2){
+        res = secp256k1_ecdsa_sign_recoverable(ctx, &sig, msgbuf.buf, secbuf.buf, NULL, NULL);
+    }else if(n_args >= 3){
+        mp_nonce_callback = args[2];
+        if(!mp_obj_is_callable(mp_nonce_callback)){
+            mp_raise_ValueError("None callback should be callable...");
+            return mp_const_none;
+        }
+        if(n_args > 3){
+            mp_nonce_data = args[3];
+        }else{
+            mp_nonce_data = NULL;
+        }
+        res = secp256k1_ecdsa_sign_recoverable(ctx, &sig, msgbuf.buf, secbuf.buf, usecp256k1_nonce_function, mp_nonce_data);
+    }
+    if(!res){
+        mp_raise_ValueError("Failed to sign");
+        return mp_const_none;
+    }
+
+    vstr_t vstr;
+    vstr_init_len(&vstr, 65);
+    memcpy((byte*)vstr.buf, sig.data, 65);
+
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_ecdsa_sign_recoverable_obj, 2, usecp256k1_ecdsa_sign_recoverable);
+
 /****************************** MODULE ******************************/
 
 STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
@@ -654,6 +708,8 @@ STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_ecdsa_signature_normalize), MP_ROM_PTR(&usecp256k1_ecdsa_signature_normalize_obj) },
     { MP_ROM_QSTR(MP_QSTR_ecdsa_verify), MP_ROM_PTR(&usecp256k1_ecdsa_verify_obj) },
     { MP_ROM_QSTR(MP_QSTR_ecdsa_sign), MP_ROM_PTR(&usecp256k1_ecdsa_sign_obj) },
+
+    { MP_ROM_QSTR(MP_QSTR_ecdsa_sign_recoverable), MP_ROM_PTR(&usecp256k1_ecdsa_sign_recoverable_obj) },
 
     { MP_ROM_QSTR(MP_QSTR_nonce_function_default), MP_ROM_PTR(&usecp256k1_nonce_function_default_obj) },
     { MP_ROM_QSTR(MP_QSTR_nonce_function_rfc6979), MP_ROM_PTR(&usecp256k1_nonce_function_default_obj) },
