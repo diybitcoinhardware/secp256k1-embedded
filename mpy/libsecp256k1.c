@@ -7,6 +7,7 @@
 #include "include/secp256k1_generator.h"
 #include "include/secp256k1_rangeproof.h"
 #include "py/obj.h"
+#include "py/objint.h"
 #include "py/runtime.h"
 #include "py/builtin.h"
 #include "py/gc.h"
@@ -764,7 +765,15 @@ STATIC mp_obj_t usecp256k1_pedersen_commit(const mp_obj_t blindarg, const mp_obj
         return mp_const_none;
     }
 
-    mp_uint_t value = (mp_uint_t)mp_obj_get_int(valuearg);
+    uint64_t value = 0;
+    // int to little endian
+    uint8_t buf[8] = {0};
+    mp_obj_int_to_bytes_impl(valuearg, true, 8, buf);
+    for (int i = 0; i < 8; ++i)
+    {
+        value = (value << 8);
+        value += buf[i];
+    }
 
 
     secp256k1_generator gen;
