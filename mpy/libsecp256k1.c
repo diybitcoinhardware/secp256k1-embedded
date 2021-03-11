@@ -4,6 +4,8 @@
 #include "include/secp256k1.h"
 #include "include/secp256k1_preallocated.h"
 #include "include/secp256k1_recovery.h"
+#include "include/secp256k1_generator.h"
+#include "include/secp256k1_rangeproof.h"
 #include "py/obj.h"
 #include "py/runtime.h"
 #include "py/builtin.h"
@@ -693,6 +695,114 @@ STATIC mp_obj_t usecp256k1_ecdsa_sign_recoverable(mp_uint_t n_args, const mp_obj
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_ecdsa_sign_recoverable_obj, 2, usecp256k1_ecdsa_sign_recoverable);
 
+/******************************* zkp ********************************/
+
+STATIC mp_obj_t usecp256k1_generator_generate_blinded(const mp_obj_t assetarg, const mp_obj_t abfarg){
+    maybe_init_ctx();
+    mp_buffer_info_t assetbuf;
+    mp_get_buffer_raise(assetarg, &assetbuf, MP_BUFFER_READ);
+    if(assetbuf.len != 32){
+        mp_raise_ValueError("Asset should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    mp_buffer_info_t abfbuf;
+    mp_get_buffer_raise(abfarg, &abfbuf, MP_BUFFER_READ);
+    if(abfbuf.len != 32){
+        mp_raise_ValueError("Blinding factor should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    secp256k1_generator gen;
+
+    int res = secp256k1_generator_generate_blinded(ctx, &gen, assetbuf.buf, abfbuf.buf);
+    if(!res){ // never happens according to the API
+        mp_raise_ValueError("Failed to generate generator");
+        return mp_const_none;
+    }
+    vstr_t vstr;
+    vstr_init_len(&vstr, 64);
+    memcpy(vstr.buf, gen.data, 64);
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(usecp256k1_generator_generate_blinded_obj, usecp256k1_generator_generate_blinded);
+
+// serialize generator
+STATIC mp_obj_t usecp256k1_generator_serialize(const mp_obj_t arg){
+    maybe_init_ctx();
+    mp_buffer_info_t buf;
+    mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
+    if(buf.len != 64){
+        mp_raise_ValueError("Generator should be 64 bytes long");
+        return mp_const_none;
+    }
+    secp256k1_generator gen;
+    memcpy(gen.data, buf.buf, 64);
+    vstr_t vstr;
+    vstr_init_len(&vstr, 33);
+    secp256k1_generator_serialize(ctx, (byte*)vstr.buf, &gen);
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_generator_serialize_obj, usecp256k1_generator_serialize);
+
+// pedersen_commit(value_blinding_factor, value, gen)
+STATIC mp_obj_t usecp256k1_pedersen_commit(const mp_obj_t blindarg, const mp_obj_t valuearg, const mp_obj_t genarg){
+    maybe_init_ctx();
+    mp_buffer_info_t blindbuf;
+    mp_get_buffer_raise(blindarg, &blindbuf, MP_BUFFER_READ);
+    if(blindbuf.len != 32){
+        mp_raise_ValueError("Blinding factor should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    mp_buffer_info_t genbuf;
+    mp_get_buffer_raise(genarg, &genbuf, MP_BUFFER_READ);
+    if(genbuf.len != 64){
+        mp_raise_ValueError("Generator should be 64 bytes long");
+        return mp_const_none;
+    }
+
+    mp_uint_t value = (mp_uint_t)mp_obj_get_int(valuearg);
+
+
+    secp256k1_generator gen;
+    memcpy(gen.data, genbuf.buf, 64);
+
+    secp256k1_pedersen_commitment commit;
+
+    int res = secp256k1_pedersen_commit(ctx, &commit, blindbuf.buf, value, genbuf.buf);
+    if(!res){ // never happens according to the API
+        mp_raise_ValueError("Failed to create commitment");
+        return mp_const_none;
+    }
+    vstr_t vstr;
+    vstr_init_len(&vstr, 64);
+    memcpy(vstr.buf, commit.data, 64);
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_3(usecp256k1_pedersen_commit_obj, usecp256k1_pedersen_commit);
+
+STATIC mp_obj_t usecp256k1_pedersen_commitment_serialize(const mp_obj_t arg){
+    maybe_init_ctx();
+    mp_buffer_info_t buf;
+    mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
+    if(buf.len != 64){
+        mp_raise_ValueError("Pedersen commitment should be 64 bytes long");
+        return mp_const_none;
+    }
+    secp256k1_pedersen_commitment gen;
+    memcpy(gen.data, buf.buf, 64);
+    vstr_t vstr;
+    vstr_init_len(&vstr, 33);
+    secp256k1_pedersen_commitment_serialize(ctx, (byte*)vstr.buf, &gen);
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_pedersen_commitment_serialize_obj, usecp256k1_pedersen_commitment_serialize);
+
 /****************************** MODULE ******************************/
 
 STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
@@ -724,6 +834,11 @@ STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_ec_pubkey_combine), MP_ROM_PTR(&usecp256k1_ec_pubkey_combine_obj) },
     { MP_ROM_QSTR(MP_QSTR_EC_COMPRESSED), MP_ROM_INT(SECP256K1_EC_COMPRESSED) },
     { MP_ROM_QSTR(MP_QSTR_EC_UNCOMPRESSED), MP_ROM_INT(SECP256K1_EC_UNCOMPRESSED) },
+
+    { MP_ROM_QSTR(MP_QSTR_generator_generate_blinded), MP_ROM_PTR(&usecp256k1_generator_generate_blinded_obj) },
+    { MP_ROM_QSTR(MP_QSTR_generator_serialize), MP_ROM_PTR(&usecp256k1_generator_serialize_obj) },
+    { MP_ROM_QSTR(MP_QSTR_pedersen_commit), MP_ROM_PTR(&usecp256k1_pedersen_commit_obj) },
+    { MP_ROM_QSTR(MP_QSTR_pedersen_commitment_serialize), MP_ROM_PTR(&usecp256k1_pedersen_commitment_serialize_obj) },
 };
 STATIC MP_DEFINE_CONST_DICT(secp256k1_module_globals, secp256k1_module_globals_table);
 
