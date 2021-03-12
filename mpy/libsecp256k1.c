@@ -8,6 +8,7 @@
 #include "include/secp256k1_rangeproof.h"
 #include "py/obj.h"
 #include "py/objint.h"
+#include "py/binary.h"
 #include "py/runtime.h"
 #include "py/builtin.h"
 #include "py/gc.h"
@@ -749,7 +750,7 @@ STATIC mp_obj_t usecp256k1_generator_serialize(const mp_obj_t arg){
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_generator_serialize_obj, usecp256k1_generator_serialize);
 
 // pedersen_commit(value_blinding_factor, value, gen)
-STATIC mp_obj_t usecp256k1_pedersen_commit(const mp_obj_t blindarg, const mp_obj_t valuearg, const mp_obj_t genarg){
+STATIC mp_obj_t usecp256k1_pedersen_commit(const mp_obj_t blindarg, mp_obj_t valuearg, const mp_obj_t genarg){
     maybe_init_ctx();
     mp_buffer_info_t blindbuf;
     mp_get_buffer_raise(blindarg, &blindbuf, MP_BUFFER_READ);
@@ -765,10 +766,20 @@ STATIC mp_obj_t usecp256k1_pedersen_commit(const mp_obj_t blindarg, const mp_obj
         return mp_const_none;
     }
 
+    assert(mp_obj_is_type(valuearg, &mp_type_int));
     uint64_t value = 0;
-    // int to little endian
-    uint8_t buf[8] = {0};
-    mp_obj_int_to_bytes_impl(valuearg, true, 8, buf);
+    // int to big endian
+    byte buf[8] = {0};
+    #if MICROPY_LONGINT_IMPL != MICROPY_LONGINT_IMPL_NONE
+    if (!mp_obj_is_small_int(valuearg)) {
+        mp_obj_int_to_bytes_impl(valuearg, true, 8, buf);
+    } else
+    #endif
+    {
+        mp_int_t val = MP_OBJ_SMALL_INT_VALUE(valuearg);
+        size_t l = MIN(8, sizeof(val));
+        mp_binary_set_int(l, true, buf + 8 - l, val);
+    }
     for (int i = 0; i < 8; ++i)
     {
         value = (value << 8);
@@ -782,7 +793,7 @@ STATIC mp_obj_t usecp256k1_pedersen_commit(const mp_obj_t blindarg, const mp_obj
     secp256k1_pedersen_commitment commit;
 
     int res = secp256k1_pedersen_commit(ctx, &commit, blindbuf.buf, value, genbuf.buf);
-    if(!res){ // never happens according to the API
+    if(!res){
         mp_raise_ValueError("Failed to create commitment");
         return mp_const_none;
     }
