@@ -520,6 +520,37 @@ STATIC mp_obj_t usecp256k1_ec_privkey_tweak_add(mp_obj_t privarg, const mp_obj_t
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(usecp256k1_ec_privkey_tweak_add_obj, usecp256k1_ec_privkey_tweak_add);
 
+// add private key
+STATIC mp_obj_t usecp256k1_ec_privkey_add(mp_obj_t privarg, const mp_obj_t tweakarg){
+    maybe_init_ctx();
+    mp_buffer_info_t privbuf;
+    mp_get_buffer_raise(privarg, &privbuf, MP_BUFFER_READ);
+    if(privbuf.len != 32){
+        mp_raise_ValueError("Private key should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    mp_buffer_info_t tweakbuf;
+    mp_get_buffer_raise(tweakarg, &tweakbuf, MP_BUFFER_READ);
+    if(tweakbuf.len != 32){
+        mp_raise_ValueError("Tweak should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    vstr_t priv2;
+    vstr_init_len(&priv2, 32);
+    memcpy((byte*)priv2.buf, privbuf.buf, 32);
+
+    int res = secp256k1_ec_privkey_tweak_add(ctx, priv2.buf, tweakbuf.buf);
+    if(!res){ // never happens according to the API
+        mp_raise_ValueError("Failed to tweak the private key");
+        return mp_const_none;
+    }
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &priv2);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(usecp256k1_ec_privkey_add_obj, usecp256k1_ec_privkey_add);
+
 // tweak public key in place (add tweak * Generator)
 STATIC mp_obj_t usecp256k1_ec_pubkey_tweak_add(mp_obj_t pubarg, const mp_obj_t tweakarg){
     maybe_init_ctx();
@@ -549,6 +580,39 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_tweak_add(mp_obj_t pubarg, const mp_obj_t t
 }
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(usecp256k1_ec_pubkey_tweak_add_obj, usecp256k1_ec_pubkey_tweak_add);
+
+// add tweak * Generator
+STATIC mp_obj_t usecp256k1_ec_pubkey_add(mp_obj_t pubarg, const mp_obj_t tweakarg){
+    maybe_init_ctx();
+    mp_buffer_info_t pubbuf;
+    mp_get_buffer_raise(pubarg, &pubbuf, MP_BUFFER_READ);
+    if(pubbuf.len != 64){
+        mp_raise_ValueError("Public key should be 64 bytes long");
+        return mp_const_none;
+    }
+    secp256k1_pubkey pub;
+    memcpy(pub.data, pubbuf.buf, 64);
+
+    mp_buffer_info_t tweakbuf;
+    mp_get_buffer_raise(tweakarg, &tweakbuf, MP_BUFFER_READ);
+    if(tweakbuf.len != 32){
+        mp_raise_ValueError("Tweak should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    int res = secp256k1_ec_pubkey_tweak_add(ctx, &pub, tweakbuf.buf);
+    if(!res){ // never happens according to the API
+        mp_raise_ValueError("Failed to tweak the public key");
+        return mp_const_none;
+    }
+
+    vstr_t pubbuf2;
+    vstr_init_len(&pubbuf2, 64);
+    memcpy((byte*)pubbuf2.buf, pub.data, 64);
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &pubbuf2);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(usecp256k1_ec_pubkey_add_obj, usecp256k1_ec_pubkey_add);
 
 // tweak private key in place (multiply by tweak)
 STATIC mp_obj_t usecp256k1_ec_privkey_tweak_mul(mp_obj_t privarg, const mp_obj_t tweakarg){
@@ -848,7 +912,9 @@ STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_ec_privkey_negate), MP_ROM_PTR(&usecp256k1_ec_privkey_negate_obj) },
     { MP_ROM_QSTR(MP_QSTR_ec_pubkey_negate), MP_ROM_PTR(&usecp256k1_ec_pubkey_negate_obj) },
     { MP_ROM_QSTR(MP_QSTR_ec_privkey_tweak_add), MP_ROM_PTR(&usecp256k1_ec_privkey_tweak_add_obj) },
+    { MP_ROM_QSTR(MP_QSTR_ec_privkey_add), MP_ROM_PTR(&usecp256k1_ec_privkey_add_obj) },
     { MP_ROM_QSTR(MP_QSTR_ec_pubkey_tweak_add), MP_ROM_PTR(&usecp256k1_ec_pubkey_tweak_add_obj) },
+    { MP_ROM_QSTR(MP_QSTR_ec_pubkey_add), MP_ROM_PTR(&usecp256k1_ec_pubkey_add_obj) },
     { MP_ROM_QSTR(MP_QSTR_ec_privkey_tweak_mul), MP_ROM_PTR(&usecp256k1_ec_privkey_tweak_mul_obj) },
     { MP_ROM_QSTR(MP_QSTR_ec_pubkey_tweak_mul), MP_ROM_PTR(&usecp256k1_ec_pubkey_tweak_mul_obj) },
     { MP_ROM_QSTR(MP_QSTR_ec_pubkey_combine), MP_ROM_PTR(&usecp256k1_ec_pubkey_combine_obj) },
