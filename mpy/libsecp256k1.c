@@ -887,6 +887,107 @@ STATIC mp_obj_t usecp256k1_pedersen_commitment_serialize(const mp_obj_t arg){
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_pedersen_commitment_serialize_obj, usecp256k1_pedersen_commitment_serialize);
 
+
+uint64_t get_uint64(mp_obj_t arg){
+    assert(mp_obj_is_type(arg, &mp_type_int));
+    uint64_t value = 0;
+    // int to big endian
+    byte buf[8] = {0};
+    #if MICROPY_LONGINT_IMPL != MICROPY_LONGINT_IMPL_NONE
+    if (!mp_obj_is_small_int(arg)) {
+        mp_obj_int_to_bytes_impl(arg, true, 8, buf);
+    } else
+    #endif
+    {
+        mp_int_t val = MP_OBJ_SMALL_INT_VALUE(arg);
+        size_t l = MIN(8, sizeof(val));
+        mp_binary_set_int(l, true, buf + 8 - l, val);
+    }
+    for (int i = 0; i < 8; ++i)
+    {
+        value = (value << 8);
+        value += buf[i];
+    }
+    return value;
+}
+
+// rangeproof_sign(nonce, value, value_commitment, vbf, message, extra, gen, min_value=1, exp=0, min_bits=52)
+STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *args){
+    maybe_init_ctx();
+    if(n_args < 7){
+        mp_raise_ValueError("Function requires at least 7 arguments");
+        return mp_const_none;
+    }
+    mp_buffer_info_t nonce;
+    mp_get_buffer_raise(args[0], &nonce, MP_BUFFER_READ);
+    if(nonce.len != 32){
+        mp_raise_ValueError("Nonce should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    uint64_t value = get_uint64(args[1]);
+
+    mp_buffer_info_t commitbuf;
+    mp_get_buffer_raise(args[2], &commitbuf, MP_BUFFER_READ);
+    if(commitbuf.len != 64){
+        mp_raise_ValueError("Commitment should be 64 bytes long");
+        return mp_const_none;
+    }
+    secp256k1_pedersen_commitment commit;
+    memcpy(commit.data, commitbuf.buf, 64);
+
+    mp_buffer_info_t vbf;
+    mp_get_buffer_raise(args[3], &vbf, MP_BUFFER_READ);
+    if(vbf.len != 32){
+        mp_raise_ValueError("Value blinding factor should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    mp_buffer_info_t msg;
+    mp_get_buffer_raise(args[4], &msg, MP_BUFFER_READ);
+
+    mp_buffer_info_t extra;
+    mp_get_buffer_raise(args[5], &extra, MP_BUFFER_READ);
+
+    mp_buffer_info_t genbuf;
+    mp_get_buffer_raise(args[6], &genbuf, MP_BUFFER_READ);
+    if(genbuf.len != 64){
+        mp_raise_ValueError("Commitment should be 64 bytes long");
+        return mp_const_none;
+    }
+    secp256k1_generator gen;
+    memcpy(gen.data, genbuf.buf, 64);
+
+    uint64_t min_value = 1;
+    if(n_args >= 7){
+        min_value = get_uint64(args[7]);
+    }
+    int exp = 0;
+    if(n_args >= 8){
+        exp = MP_OBJ_SMALL_INT_VALUE(args[8]);
+    }
+    int min_bits = 52;
+    if(n_args >= 9){
+        min_value = MP_OBJ_SMALL_INT_VALUE(args[9]);
+    }
+
+    char proof[5134];
+    size_t prooflen = 5134;
+    int res = secp256k1_rangeproof_sign(ctx, proof, &prooflen,
+                min_value, &commit, vbf.buf, nonce.buf,
+                exp, min_bits, value, msg.buf, msg.len, extra.buf, extra.len, &gen);
+    if(!res){
+        mp_raise_ValueError("Failed to create a proof");
+        return mp_const_none;
+    }
+    vstr_t vstr;
+    vstr_init_len(&vstr, prooflen);
+    memcpy(vstr.buf, proof, prooflen);
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_rangeproof_sign_obj, 7, usecp256k1_rangeproof_sign);
+
 /****************************** MODULE ******************************/
 
 STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
@@ -925,6 +1026,8 @@ STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_generator_serialize), MP_ROM_PTR(&usecp256k1_generator_serialize_obj) },
     { MP_ROM_QSTR(MP_QSTR_pedersen_commit), MP_ROM_PTR(&usecp256k1_pedersen_commit_obj) },
     { MP_ROM_QSTR(MP_QSTR_pedersen_commitment_serialize), MP_ROM_PTR(&usecp256k1_pedersen_commitment_serialize_obj) },
+
+    { MP_ROM_QSTR(MP_QSTR_rangeproof_sign), MP_ROM_PTR(&usecp256k1_rangeproof_sign_obj) },
 };
 STATIC MP_DEFINE_CONST_DICT(secp256k1_module_globals, secp256k1_module_globals_table);
 
