@@ -813,6 +813,28 @@ STATIC mp_obj_t usecp256k1_generator_serialize(const mp_obj_t arg){
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_generator_serialize_obj, usecp256k1_generator_serialize);
 
+STATIC mp_obj_t usecp256k1_generator_parse(const mp_obj_t arg){
+    maybe_init_ctx();
+    mp_buffer_info_t buf;
+    mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
+    if(buf.len != 33){
+        mp_raise_ValueError("Serialized generator should be 33 bytes long");
+        return mp_const_none;
+    }
+    secp256k1_generator gen;
+    int res = secp256k1_generator_parse(ctx, &gen, buf.buf);
+    if(!res){
+        mp_raise_ValueError("Failed to parse commitment");
+        return mp_const_none;
+    }
+    vstr_t vstr;
+    vstr_init_len(&vstr, 64);
+    memcpy(vstr.buf, gen.data, 64);
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_generator_parse_obj, usecp256k1_generator_parse);
+
 // pedersen_commit(value_blinding_factor, value, gen)
 STATIC mp_obj_t usecp256k1_pedersen_commit(const mp_obj_t blindarg, mp_obj_t valuearg, const mp_obj_t genarg){
     maybe_init_ctx();
@@ -887,6 +909,28 @@ STATIC mp_obj_t usecp256k1_pedersen_commitment_serialize(const mp_obj_t arg){
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_pedersen_commitment_serialize_obj, usecp256k1_pedersen_commitment_serialize);
 
+
+STATIC mp_obj_t usecp256k1_pedersen_commitment_parse(const mp_obj_t arg){
+    maybe_init_ctx();
+    mp_buffer_info_t buf;
+    mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
+    if(buf.len != 33){
+        mp_raise_ValueError("Serialized pedersen commitment should be 33 bytes long");
+        return mp_const_none;
+    }
+    secp256k1_pedersen_commitment gen;
+    int res = secp256k1_pedersen_commitment_parse(ctx, &gen, buf.buf);
+    if(!res){
+        mp_raise_ValueError("Failed to parse commitment");
+        return mp_const_none;
+    }
+    vstr_t vstr;
+    vstr_init_len(&vstr, 64);
+    memcpy(vstr.buf, gen.data, 64);
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_pedersen_commitment_parse_obj, usecp256k1_pedersen_commitment_parse);
 
 uint64_t get_uint64(mp_obj_t arg){
     assert(mp_obj_is_type(arg, &mp_type_int));
@@ -1024,8 +1068,10 @@ STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
 
     { MP_ROM_QSTR(MP_QSTR_generator_generate_blinded), MP_ROM_PTR(&usecp256k1_generator_generate_blinded_obj) },
     { MP_ROM_QSTR(MP_QSTR_generator_serialize), MP_ROM_PTR(&usecp256k1_generator_serialize_obj) },
+    { MP_ROM_QSTR(MP_QSTR_generator_parse), MP_ROM_PTR(&usecp256k1_generator_parse_obj) },
     { MP_ROM_QSTR(MP_QSTR_pedersen_commit), MP_ROM_PTR(&usecp256k1_pedersen_commit_obj) },
     { MP_ROM_QSTR(MP_QSTR_pedersen_commitment_serialize), MP_ROM_PTR(&usecp256k1_pedersen_commitment_serialize_obj) },
+    { MP_ROM_QSTR(MP_QSTR_pedersen_commitment_parse), MP_ROM_PTR(&usecp256k1_pedersen_commitment_parse_obj) },
 
     { MP_ROM_QSTR(MP_QSTR_rangeproof_sign), MP_ROM_PTR(&usecp256k1_rangeproof_sign_obj) },
 };
