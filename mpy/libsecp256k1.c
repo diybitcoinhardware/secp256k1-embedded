@@ -1032,6 +1032,76 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_rangeproof_sign_obj, 7, usecp256k1_rangeproof_sign);
 
+// rangeproof_rewind(proof, nonce, value_commitment, script_pubkey, generator)
+STATIC mp_obj_t usecp256k1_rangeproof_rewind(mp_uint_t n_args, const mp_obj_t *args){
+    maybe_init_ctx();
+    if(n_args != 5){
+        mp_raise_ValueError("Function requires 5 arguments");
+        return mp_const_none;
+    }
+    mp_buffer_info_t proof;
+    mp_get_buffer_raise(args[0], &proof, MP_BUFFER_READ);
+
+    mp_buffer_info_t nonce;
+    mp_get_buffer_raise(args[1], &nonce, MP_BUFFER_READ);
+    if(nonce.len != 32){
+        mp_raise_ValueError("Nonce should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    mp_buffer_info_t value_commitment;
+    mp_get_buffer_raise(args[2], &value_commitment, MP_BUFFER_READ);
+    if(value_commitment.len != 64){
+        mp_raise_ValueError("Value commitment should be 64 bytes long");
+        return mp_const_none;
+    }
+
+    mp_buffer_info_t script_pubkey;
+    mp_get_buffer_raise(args[3], &script_pubkey, MP_BUFFER_READ);
+
+    mp_buffer_info_t generator;
+    mp_get_buffer_raise(args[4], &generator, MP_BUFFER_READ);
+    if(generator.len != 64){
+        mp_raise_ValueError("Generator should be 64 bytes long");
+        return mp_const_none;
+    }
+
+    vstr_t vbf_out;
+    vstr_init_len(&vbf_out, 32);
+
+    char msg[64] = {0};
+    size_t msglen = sizeof(msg);
+    uint64_t value_out;
+    uint64_t min_value;
+    uint64_t max_value;
+
+    int res = secp256k1_rangeproof_rewind(ctx, vbf_out.buf, &value_out,
+                            msg, &msglen,
+                            nonce.buf, &min_value, &max_value,
+                            value_commitment.buf, proof.buf, proof.len,
+                            script_pubkey.buf, script_pubkey.len,
+                            generator.buf);
+
+    vstr_t asset;
+    vstr_init_len(&asset, 32);
+    memcpy(asset.buf, msg, 32);
+    vstr_t abf;
+    vstr_init_len(&abf, 32);
+    memcpy(abf.buf, msg+32, 32);
+
+    // value_out, asset, vbf_out, abf, min_value, max_value
+    mp_obj_t items[6];
+    items[0] = mp_obj_new_int_from_ull(value_out);
+    items[1] = mp_obj_new_str_from_vstr(&mp_type_bytes, &asset);
+    items[2] = mp_obj_new_str_from_vstr(&mp_type_bytes, &vbf_out);
+    items[3] = mp_obj_new_str_from_vstr(&mp_type_bytes, &abf);
+    items[4] = mp_obj_new_int_from_ull(min_value);
+    items[5] = mp_obj_new_int_from_ull(max_value);
+    return mp_obj_new_tuple(6, items);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_rangeproof_rewind_obj, 5, usecp256k1_rangeproof_rewind);
+
 /****************************** MODULE ******************************/
 
 STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
@@ -1074,6 +1144,7 @@ STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_pedersen_commitment_parse), MP_ROM_PTR(&usecp256k1_pedersen_commitment_parse_obj) },
 
     { MP_ROM_QSTR(MP_QSTR_rangeproof_sign), MP_ROM_PTR(&usecp256k1_rangeproof_sign_obj) },
+    { MP_ROM_QSTR(MP_QSTR_rangeproof_rewind), MP_ROM_PTR(&usecp256k1_rangeproof_rewind_obj) },
 };
 STATIC MP_DEFINE_CONST_DICT(secp256k1_module_globals, secp256k1_module_globals_table);
 
