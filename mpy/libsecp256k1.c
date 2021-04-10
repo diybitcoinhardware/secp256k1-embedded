@@ -1003,15 +1003,15 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
     memcpy(gen.data, genbuf.buf, 64);
 
     uint64_t min_value = 1;
-    if(n_args >= 7){
+    if(n_args > 7){
         min_value = get_uint64(args[7]);
     }
     int exp = 0;
-    if(n_args >= 8){
+    if(n_args > 8){
         exp = MP_OBJ_SMALL_INT_VALUE(args[8]);
     }
     int min_bits = 52;
-    if(n_args >= 9){
+    if(n_args > 9){
         min_value = MP_OBJ_SMALL_INT_VALUE(args[9]);
     }
 
