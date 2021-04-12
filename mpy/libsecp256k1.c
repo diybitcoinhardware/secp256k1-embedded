@@ -30,6 +30,14 @@ void maybe_init_ctx(){
     ctx = secp256k1_context_preallocated_create((void *)preallocated_ctx, SECP256K1_CONTEXT_VERIFY | SECP256K1_CONTEXT_SIGN);
 }
 
+
+STATIC mp_obj_t usecp256k1_context_preallocated_size(){
+    size_t size = secp256k1_context_preallocated_size(SECP256K1_CONTEXT_VERIFY | SECP256K1_CONTEXT_SIGN);
+    return mp_obj_new_int_from_ull(size);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_0(usecp256k1_context_preallocated_size_obj, usecp256k1_context_preallocated_size);
+
+
 // randomize context using 32-byte seed
 STATIC mp_obj_t usecp256k1_context_randomize(const mp_obj_t seed){
     maybe_init_ctx();
@@ -1015,18 +1023,18 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
         min_value = MP_OBJ_SMALL_INT_VALUE(args[9]);
     }
 
-    char proof[5134];
+    vstr_t vstr;
+    vstr_init_len(&vstr, 5134);
     size_t prooflen = 5134;
-    int res = secp256k1_rangeproof_sign(ctx, proof, &prooflen,
+    int res = secp256k1_rangeproof_sign(ctx, vstr.buf, &prooflen,
                 min_value, &commit, vbf.buf, nonce.buf,
                 exp, min_bits, value, msg.buf, msg.len, extra.buf, extra.len, &gen);
     if(!res){
+        vstr_free(&vstr);
         mp_raise_ValueError("Failed to create a proof");
         return mp_const_none;
     }
-    vstr_t vstr;
-    vstr_init_len(&vstr, prooflen);
-    memcpy(vstr.buf, proof, prooflen);
+    vstr_cut_tail_bytes(&vstr, 5134-prooflen);
     return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
 }
 
@@ -1107,6 +1115,7 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_rangeproof_rewind_obj, 5, usecp256
 STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_secp256k1) },
     { MP_ROM_QSTR(MP_QSTR_context_randomize), MP_ROM_PTR(&usecp256k1_context_randomize_obj) },
+    { MP_ROM_QSTR(MP_QSTR_context_preallocated_size), MP_ROM_PTR(&usecp256k1_context_preallocated_size_obj) },
     { MP_ROM_QSTR(MP_QSTR_ec_pubkey_create), MP_ROM_PTR(&usecp256k1_ec_pubkey_create_obj) },
     { MP_ROM_QSTR(MP_QSTR_ec_pubkey_parse), MP_ROM_PTR(&usecp256k1_ec_pubkey_parse_obj) },
     { MP_ROM_QSTR(MP_QSTR_ec_pubkey_serialize), MP_ROM_PTR(&usecp256k1_ec_pubkey_serialize_obj) },
