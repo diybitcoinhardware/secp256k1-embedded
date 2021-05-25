@@ -1077,35 +1077,40 @@ STATIC mp_obj_t usecp256k1_rangeproof_rewind(mp_uint_t n_args, const mp_obj_t *a
     vstr_t vbf_out;
     vstr_init_len(&vbf_out, 32);
 
-    char msg[64] = {0};
-    size_t msglen = sizeof(msg);
+    size_t msglen = 64;
+    if(n_args > 5){
+        msglen = get_uint64(args[5]);
+    }
+    size_t msglenout = msglen;
+    vstr_t msg;
+    vstr_init_len(&msg, msglen);
+
     uint64_t value_out;
     uint64_t min_value;
     uint64_t max_value;
 
     int res = secp256k1_rangeproof_rewind(ctx, vbf_out.buf, &value_out,
-                            msg, &msglen,
+                            msg.buf, &msglenout,
                             nonce.buf, &min_value, &max_value,
                             value_commitment.buf, proof.buf, proof.len,
                             script_pubkey.buf, script_pubkey.len,
                             generator.buf);
 
-    vstr_t asset;
-    vstr_init_len(&asset, 32);
-    memcpy(asset.buf, msg, 32);
-    vstr_t abf;
-    vstr_init_len(&abf, 32);
-    memcpy(abf.buf, msg+32, 32);
-
-    // value_out, asset, vbf_out, abf, min_value, max_value
-    mp_obj_t items[6];
+    // value_out, vbf_out, msg, min_value, max_value
+    mp_obj_t items[5];
     items[0] = mp_obj_new_int_from_ull(value_out);
-    items[1] = mp_obj_new_str_from_vstr(&mp_type_bytes, &asset);
-    items[2] = mp_obj_new_str_from_vstr(&mp_type_bytes, &vbf_out);
-    items[3] = mp_obj_new_str_from_vstr(&mp_type_bytes, &abf);
-    items[4] = mp_obj_new_int_from_ull(min_value);
-    items[5] = mp_obj_new_int_from_ull(max_value);
-    return mp_obj_new_tuple(6, items);
+    items[1] = mp_obj_new_str_from_vstr(&mp_type_bytes, &vbf_out);
+    if(msglen == msglenout){
+        items[2] = mp_obj_new_str_from_vstr(&mp_type_bytes, &msg);
+    }else{
+        vstr_t msgout;
+        vstr_init_len(&msgout, msglenout);
+        memcpy(msgout.buf, msg.buf, msglenout);
+        items[2] = mp_obj_new_str_from_vstr(&mp_type_bytes, &msgout);
+    }
+    items[3] = mp_obj_new_int_from_ull(min_value);
+    items[4] = mp_obj_new_int_from_ull(max_value);
+    return mp_obj_new_tuple(5, items);
 }
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_rangeproof_rewind_obj, 5, usecp256k1_rangeproof_rewind);
