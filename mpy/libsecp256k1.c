@@ -1057,7 +1057,7 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_rangeproof_sign_obj, 7, usecp256k1
 // rangeproof_rewind(proof, nonce, value_commitment, script_pubkey, generator)
 STATIC mp_obj_t usecp256k1_rangeproof_rewind(mp_uint_t n_args, const mp_obj_t *args){
     maybe_init_ctx();
-    if(n_args != 5){
+    if(n_args < 5){
         mp_raise_ValueError("Function requires 5 arguments");
         return mp_const_none;
     }
