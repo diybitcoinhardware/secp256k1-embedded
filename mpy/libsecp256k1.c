@@ -343,40 +343,48 @@ STATIC int usecp256k1_nonce_function(
     void *data,
     unsigned int attempt
     ){
-    if(attempt > 100){
-        mp_raise_ValueError("Too many attempts... Invalid function?");
-        // not sure it will ever get here, but just in case
-        return secp256k1_nonce_function_default(nonce32, msg32, key32, algo16, data, attempt);
-    }
-    mp_obj_t mp_args[5];
-    mp_args[0] = mp_obj_new_bytes(msg32, 32);
-    mp_args[1] = mp_obj_new_bytes(key32, 32);
-    if(algo16!=NULL){
-        mp_args[2] = mp_obj_new_bytes(key32, 16);
-    }else{
-        mp_args[2] = mp_const_none;
-    }
-    if(mp_nonce_data!=NULL){
-        mp_args[3] = mp_nonce_data;
-    }else{
-        mp_args[3] = mp_const_none;
-    }
-    mp_args[4] = mp_obj_new_int_from_uint(attempt);
 
-    mp_obj_t mp_res = mp_call_function_n_kw(mp_nonce_callback , 5, 0, mp_args);
-    if(mp_res == mp_const_none){
-        return 0;
-    }
-    mp_buffer_info_t buffer_info;
-    if (!mp_get_buffer(mp_res, &buffer_info, MP_BUFFER_READ)) {
-        return 0;
-    }
-    if(buffer_info.len < 32){
-        mp_raise_ValueError("Returned nonce is less than 32 bytes");
-        return 0;
-    }
-    memcpy(nonce32, (byte*)buffer_info.buf, 32);
-    return 1;
+    return secp256k1_nonce_function_default(nonce32, msg32, key32, algo16, data, attempt);
+    // TODO: make nonce function compatible with ctypes
+    // if(!mp_obj_is_callable(mp_nonce_callback)){
+    //     mp_raise_ValueError("Nonce callback should be callable...");
+    //     return mp_const_none;
+    // }
+
+    // if(attempt > 100){
+    //     mp_raise_ValueError("Too many attempts... Invalid function?");
+    //     // not sure it will ever get here, but just in case
+    //     return secp256k1_nonce_function_default(nonce32, msg32, key32, algo16, data, attempt);
+    // }
+    // mp_obj_t mp_args[5];
+    // mp_args[0] = mp_obj_new_bytes(msg32, 32);
+    // mp_args[1] = mp_obj_new_bytes(key32, 32);
+    // if(algo16!=NULL){
+    //     mp_args[2] = mp_obj_new_bytes(key32, 16);
+    // }else{
+    //     mp_args[2] = mp_const_none;
+    // }
+    // if(mp_nonce_data!=NULL){
+    //     mp_args[3] = mp_nonce_data;
+    // }else{
+    //     mp_args[3] = mp_const_none;
+    // }
+    // mp_args[4] = mp_obj_new_int_from_uint(attempt);
+
+    // mp_obj_t mp_res = mp_call_function_n_kw(mp_nonce_callback , 5, 0, mp_args);
+    // if(mp_res == mp_const_none){
+    //     return 0;
+    // }
+    // mp_buffer_info_t buffer_info;
+    // if (!mp_get_buffer(mp_res, &buffer_info, MP_BUFFER_READ)) {
+    //     return 0;
+    // }
+    // if(buffer_info.len < 32){
+    //     mp_raise_ValueError("Returned nonce is less than 32 bytes");
+    //     return 0;
+    // }
+    // memcpy(nonce32, (byte*)buffer_info.buf, 32);
+    // return 1;
 }
 
 // msg, secret, [callback, data]
@@ -401,21 +409,24 @@ STATIC mp_obj_t usecp256k1_ecdsa_sign(mp_uint_t n_args, const mp_obj_t *args){
         return mp_const_none;
     }
     secp256k1_ecdsa_signature sig;
+
+    mp_buffer_info_t databuf;
+    void * data = NULL;
+
     int res=0;
     if(n_args == 2){
         res = secp256k1_ecdsa_sign(ctx, &sig, msgbuf.buf, secbuf.buf, NULL, NULL);
     }else if(n_args >= 3){
         mp_nonce_callback = args[2];
-        if(!mp_obj_is_callable(mp_nonce_callback)){
-            mp_raise_ValueError("None callback should be callable...");
-            return mp_const_none;
-        }
         if(n_args > 3){
-            mp_nonce_data = args[3];
-        }else{
-            mp_nonce_data = NULL;
+            mp_get_buffer_raise(args[3], &databuf, MP_BUFFER_READ);
+            if(databuf.len != 32){
+                mp_raise_ValueError("Data should be 32 bytes long");
+                return mp_const_none;
+            }
+            data = databuf.buf;
         }
-        res = secp256k1_ecdsa_sign(ctx, &sig, msgbuf.buf, secbuf.buf, usecp256k1_nonce_function, mp_nonce_data);
+        res = secp256k1_ecdsa_sign(ctx, &sig, msgbuf.buf, secbuf.buf, usecp256k1_nonce_function, data);
     }
     if(!res){
         mp_raise_ValueError("Failed to sign");
@@ -665,20 +676,23 @@ STATIC mp_obj_t usecp256k1_ecdsa_sign_recoverable(mp_uint_t n_args, const mp_obj
     }
     secp256k1_ecdsa_recoverable_signature sig;
     int res=0;
+
+    mp_buffer_info_t databuf;
+    void * data = NULL;
+
     if(n_args == 2){
         res = secp256k1_ecdsa_sign_recoverable(ctx, &sig, msgbuf.buf, secbuf.buf, NULL, NULL);
     }else if(n_args >= 3){
         mp_nonce_callback = args[2];
-        if(!mp_obj_is_callable(mp_nonce_callback)){
-            mp_raise_ValueError("None callback should be callable...");
-            return mp_const_none;
-        }
         if(n_args > 3){
-            mp_nonce_data = args[3];
-        }else{
-            mp_nonce_data = NULL;
+            mp_get_buffer_raise(args[3], &databuf, MP_BUFFER_READ);
+            if(databuf.len != 32){
+                mp_raise_ValueError("Data should be 32 bytes long");
+                return mp_const_none;
+            }
+            data = databuf.buf;
         }
-        res = secp256k1_ecdsa_sign_recoverable(ctx, &sig, msgbuf.buf, secbuf.buf, usecp256k1_nonce_function, mp_nonce_data);
+        res = secp256k1_ecdsa_sign_recoverable(ctx, &sig, msgbuf.buf, secbuf.buf, usecp256k1_nonce_function, data);
     }
     if(!res){
         mp_raise_ValueError("Failed to sign");
