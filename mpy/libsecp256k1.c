@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include "include/secp256k1.h"
 #include "include/secp256k1_preallocated.h"
+#include "include/secp256k1_extrakeys.h"
+#include "include/secp256k1_schnorrsig.h"
 #include "include/secp256k1_recovery.h"
 #include "py/obj.h"
 #include "py/runtime.h"
@@ -460,7 +462,7 @@ STATIC mp_obj_t usecp256k1_ec_seckey_verify(const mp_obj_t arg){
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_ec_seckey_verify_obj, usecp256k1_ec_seckey_verify);
 
-// negate secret key in place
+// return N - secret key
 STATIC mp_obj_t usecp256k1_ec_privkey_negate(mp_obj_t arg){
     maybe_init_ctx();
     mp_buffer_info_t buf;
@@ -470,17 +472,21 @@ STATIC mp_obj_t usecp256k1_ec_privkey_negate(mp_obj_t arg){
         return mp_const_none;
     }
 
-    int res = secp256k1_ec_privkey_negate(ctx, buf.buf);
+    vstr_t vstr;
+    vstr_init_len(&vstr, 32);
+    memcpy((byte*)vstr.buf, buf.buf, 32);
+
+    int res = secp256k1_ec_privkey_negate(ctx, vstr.buf);
     if(!res){ // never happens according to the API
         mp_raise_ValueError("Failed to negate the private key");
         return mp_const_none;
     }
-    return mp_const_none;
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
 }
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_ec_privkey_negate_obj, usecp256k1_ec_privkey_negate);
 
-// negate secret key in place
+// return neg of pubkey
 STATIC mp_obj_t usecp256k1_ec_pubkey_negate(mp_obj_t arg){
     maybe_init_ctx();
     mp_buffer_info_t buf;
@@ -490,12 +496,16 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_negate(mp_obj_t arg){
         return mp_const_none;
     }
 
-    int res = secp256k1_ec_pubkey_negate(ctx, buf.buf);
+    vstr_t vstr;
+    vstr_init_len(&vstr, 64);
+    memcpy((byte*)vstr.buf, buf.buf, 64);
+
+    int res = secp256k1_ec_pubkey_negate(ctx, (secp256k1_pubkey *)vstr.buf);
     if(!res){ // never happens according to the API
         mp_raise_ValueError("Failed to negate the public key");
         return mp_const_none;
     }
-    return mp_const_none;
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
 }
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_ec_pubkey_negate_obj, usecp256k1_ec_pubkey_negate);
@@ -651,6 +661,162 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_combine(mp_uint_t n_args, const mp_obj_t *a
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_ec_pubkey_combine_obj, 2, usecp256k1_ec_pubkey_combine);
 
+/**************************** schnorrsig ****************************/
+
+STATIC mp_obj_t usecp256k1_xonly_pubkey_from_pubkey(mp_obj_t arg){
+    maybe_init_ctx();
+    mp_buffer_info_t buf;
+    mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
+    if(buf.len != 64){
+        mp_raise_ValueError("Public key should be 64 bytes long");
+        return mp_const_none;
+    }
+
+    vstr_t vstr;
+    vstr_init_len(&vstr, 64);
+    int parity = 0;
+
+    int res = secp256k1_xonly_pubkey_from_pubkey(ctx, (secp256k1_xonly_pubkey *)vstr.buf, &parity, buf.buf);
+    if(!res){
+        mp_raise_ValueError("Failed to convert the public key");
+        return mp_const_none;
+    }
+
+    mp_obj_t items[2];
+    items[0] = mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+    items[1] = mp_obj_new_int(parity);
+    return mp_obj_new_tuple(2, items);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_xonly_pubkey_from_pubkey_obj, usecp256k1_xonly_pubkey_from_pubkey);
+
+
+STATIC mp_obj_t usecp256k1_schnorrsig_verify(const mp_obj_t sigarg, const mp_obj_t msgarg, const mp_obj_t pubkeyarg){
+    maybe_init_ctx();
+    mp_buffer_info_t buf;
+    mp_get_buffer_raise(sigarg, &buf, MP_BUFFER_READ);
+    if(buf.len != 64){
+        mp_raise_ValueError("Signature should be 64 bytes long");
+        return mp_const_none;
+    }
+    byte sig[64];
+    memcpy(sig, buf.buf, 64);
+
+    mp_get_buffer_raise(msgarg, &buf, MP_BUFFER_READ);
+    if(buf.len != 32){
+        mp_raise_ValueError("Message should be 32 bytes long");
+        return mp_const_none;
+    }
+    byte msg[32];
+    memcpy(msg, buf.buf, 32);
+
+    mp_get_buffer_raise(pubkeyarg, &buf, MP_BUFFER_READ);
+    if(buf.len != 64){
+        mp_raise_ValueError("Public key should be 64 bytes long");
+        return mp_const_none;
+    }
+    secp256k1_xonly_pubkey pub;
+    memcpy(pub.data, buf.buf, 64);
+
+    int res = secp256k1_schnorrsig_verify(ctx, sig, msg, &pub);
+    if(res){
+        return mp_const_true;
+    }
+    return mp_const_false;
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_3(usecp256k1_schnorrsig_verify_obj, usecp256k1_schnorrsig_verify);
+
+
+STATIC mp_obj_t usecp256k1_keypair_create(mp_obj_t arg){
+    maybe_init_ctx();
+    mp_buffer_info_t buf;
+    mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
+    if(buf.len != 32){
+        mp_raise_ValueError("Secret should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    vstr_t vstr;
+    vstr_init_len(&vstr, 96);
+    int parity = 0;
+
+    int res = secp256k1_keypair_create(ctx, (secp256k1_keypair *)vstr.buf, buf.buf);
+    if(!res){
+        mp_raise_ValueError("Failed to create keypair");
+        return mp_const_none;
+    }
+
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_keypair_create_obj, usecp256k1_keypair_create);
+
+
+// msg, secret, [callback, data]
+STATIC mp_obj_t usecp256k1_schnorrsig_sign(mp_uint_t n_args, const mp_obj_t *args){
+    maybe_init_ctx();
+    mp_nonce_data = NULL;
+    if(n_args < 2){
+        mp_raise_ValueError("Function requires at least two arguments: message and private key");
+        return mp_const_none;
+    }
+    mp_buffer_info_t msgbuf;
+    mp_get_buffer_raise(args[0], &msgbuf, MP_BUFFER_READ);
+    if(msgbuf.len != 32){
+        mp_raise_ValueError("Message should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    mp_buffer_info_t secbuf;
+    mp_get_buffer_raise(args[1], &secbuf, MP_BUFFER_READ);
+    if(secbuf.len != 32 && secbuf.len != 96){
+        mp_raise_ValueError("Secret key should be 32 bytes long or 96 bytes long (keypair)");
+        return mp_const_none;
+    }
+    byte keypair[96];
+    if(secbuf.len == 32){
+        int res = secp256k1_keypair_create(ctx, (secp256k1_keypair *)keypair, secbuf.buf);
+        if(!res){
+            mp_raise_ValueError("Failed to create keypair");
+            return mp_const_none;
+        }
+    }else{
+        memcpy(keypair, secbuf.buf, 96);
+    }
+    byte sig[64];
+
+    mp_buffer_info_t databuf;
+    void * data = NULL;
+
+    int res=0;
+    if(n_args == 2){
+        res = secp256k1_schnorrsig_sign(ctx, sig, msgbuf.buf, (secp256k1_keypair *)keypair, NULL, NULL);
+    }else if(n_args >= 3){
+        mp_nonce_callback = args[2];
+        if(n_args > 3){
+            mp_get_buffer_raise(args[3], &databuf, MP_BUFFER_READ);
+            if(databuf.len != 32){
+                mp_raise_ValueError("Data should be 32 bytes long");
+                return mp_const_none;
+            }
+            data = databuf.buf;
+        }
+        res = secp256k1_schnorrsig_sign(ctx, sig, msgbuf.buf, (secp256k1_keypair *)keypair, NULL, data);
+    }
+    if(!res){
+        mp_raise_ValueError("Failed to sign");
+        return mp_const_none;
+    }
+
+    vstr_t vstr;
+    vstr_init_len(&vstr, 64);
+    memcpy((byte*)vstr.buf, sig, 64);
+
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_schnorrsig_sign_obj, 2, usecp256k1_schnorrsig_sign);
+
 /**************************** recoverable ***************************/
 
 // msg, secret, [callback, data]
@@ -722,6 +888,11 @@ STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_ecdsa_signature_normalize), MP_ROM_PTR(&usecp256k1_ecdsa_signature_normalize_obj) },
     { MP_ROM_QSTR(MP_QSTR_ecdsa_verify), MP_ROM_PTR(&usecp256k1_ecdsa_verify_obj) },
     { MP_ROM_QSTR(MP_QSTR_ecdsa_sign), MP_ROM_PTR(&usecp256k1_ecdsa_sign_obj) },
+   // schnorrsig
+    { MP_ROM_QSTR(MP_QSTR_xonly_pubkey_from_pubkey), MP_ROM_PTR(&usecp256k1_xonly_pubkey_from_pubkey_obj) },
+    { MP_ROM_QSTR(MP_QSTR_schnorrsig_verify), MP_ROM_PTR(&usecp256k1_schnorrsig_verify_obj) },
+    { MP_ROM_QSTR(MP_QSTR_keypair_create), MP_ROM_PTR(&usecp256k1_keypair_create_obj) },
+    { MP_ROM_QSTR(MP_QSTR_schnorrsig_sign), MP_ROM_PTR(&usecp256k1_schnorrsig_sign_obj) },
 
     { MP_ROM_QSTR(MP_QSTR_ecdsa_sign_recoverable), MP_ROM_PTR(&usecp256k1_ecdsa_sign_recoverable_obj) },
 
