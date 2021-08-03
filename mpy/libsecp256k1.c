@@ -14,6 +14,12 @@
 #define malloc(b) gc_alloc((b), false)
 #define free gc_free
 
+// newer versions of micropython require usage of MP_ERROR_TEXT
+// but older don't know about it
+#ifndef MP_ERROR_TEXT
+#define MP_ERROR_TEXT(x) (x)
+#endif
+
 // global context
 #define PREALLOCATED_CTX_SIZE 880 // 440 for 32-bit. FIXME: autodetect
 
@@ -34,12 +40,12 @@ STATIC mp_obj_t usecp256k1_context_randomize(const mp_obj_t seed){
     mp_buffer_info_t seedbuf;
     mp_get_buffer_raise(seed, &seedbuf, MP_BUFFER_READ);
     if(seedbuf.len != 32){
-        mp_raise_ValueError("Seed should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Seed should be 32 bytes long"));
         return mp_const_none;
     }
     int res = secp256k1_context_randomize(ctx, seedbuf.buf);
     if(!res){
-        mp_raise_ValueError("Failed to randomize context");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to randomize context"));
         return mp_const_none;
     }
     return mp_const_none;
@@ -52,13 +58,13 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_create(const mp_obj_t arg){
     mp_buffer_info_t secretbuf;
     mp_get_buffer_raise(arg, &secretbuf, MP_BUFFER_READ);
     if(secretbuf.len != 32){
-        mp_raise_ValueError("Private key should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Private key should be 32 bytes long"));
         return mp_const_none;
     }
     secp256k1_pubkey pubkey;
     int res = secp256k1_ec_pubkey_create(ctx, &pubkey, secretbuf.buf);
     if(!res){
-        mp_raise_ValueError("Invalid private key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Invalid private key"));
         return mp_const_none;
     }
     vstr_t vstr;
@@ -76,20 +82,20 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_parse(const mp_obj_t arg){
     mp_buffer_info_t secbuf;
     mp_get_buffer_raise(arg, &secbuf, MP_BUFFER_READ);
     if(secbuf.len != 33 && secbuf.len != 65){
-        mp_raise_ValueError("Serialized pubkey should be 33 or 65 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Serialized pubkey should be 33 or 65 bytes long"));
         return mp_const_none;
     }
     byte * buf = (byte*)secbuf.buf;
     switch(secbuf.len){
         case 33:
             if(buf[0] != 0x02 && buf[0] != 0x03){
-                mp_raise_ValueError("Compressed pubkey should start with 0x02 or 0x03");
+                mp_raise_ValueError(MP_ERROR_TEXT("Compressed pubkey should start with 0x02 or 0x03"));
                 return mp_const_none;
             }
             break;
         case 65:
             if(buf[0] != 0x04){
-                mp_raise_ValueError("Uncompressed pubkey should start with 0x04");
+                mp_raise_ValueError(MP_ERROR_TEXT("Uncompressed pubkey should start with 0x04"));
                 return mp_const_none;
             }
             break;
@@ -97,7 +103,7 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_parse(const mp_obj_t arg){
     secp256k1_pubkey pubkey;
     int res = secp256k1_ec_pubkey_parse(ctx, &pubkey, secbuf.buf, secbuf.len);
     if(!res){
-        mp_raise_ValueError("Failed parsing public key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed parsing public key"));
         return mp_const_none;
     }
     vstr_t vstr;
@@ -115,7 +121,7 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_serialize(mp_uint_t n_args, const mp_obj_t 
     mp_buffer_info_t pubbuf;
     mp_get_buffer_raise(args[0], &pubbuf, MP_BUFFER_READ);
     if(pubbuf.len != 64){
-        mp_raise_ValueError("Pubkey should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Pubkey should be 64 bytes long"));
         return mp_const_none;
     }
     secp256k1_pubkey pubkey;
@@ -128,7 +134,7 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_serialize(mp_uint_t n_args, const mp_obj_t 
     size_t len = 65;
     int res = secp256k1_ec_pubkey_serialize(ctx, out, &len, &pubkey, flag);
     if(!res){
-        mp_raise_ValueError("Failed serializing public key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed serializing public key"));
         return mp_const_none;
     }
     vstr_t vstr;
@@ -145,13 +151,13 @@ STATIC mp_obj_t usecp256k1_ecdsa_signature_parse_compact(const mp_obj_t arg){
     mp_buffer_info_t buf;
     mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
     if(buf.len != 64){
-        mp_raise_ValueError("Compact signature should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Compact signature should be 64 bytes long"));
         return mp_const_none;
     }
     secp256k1_ecdsa_signature sig;
     int res = secp256k1_ecdsa_signature_parse_compact(ctx, &sig, buf.buf);
     if(!res){
-        mp_raise_ValueError("Failed parsing compact signature");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed parsing compact signature"));
         return mp_const_none;
     }
     vstr_t vstr;
@@ -171,7 +177,7 @@ STATIC mp_obj_t usecp256k1_ecdsa_signature_parse_der(const mp_obj_t arg){
     secp256k1_ecdsa_signature sig;
     int res = secp256k1_ecdsa_signature_parse_der(ctx, &sig, buf.buf, buf.len);
     if(!res){
-        mp_raise_ValueError("Failed parsing der signature");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed parsing der signature"));
         return mp_const_none;
     }
     vstr_t vstr;
@@ -189,7 +195,7 @@ STATIC mp_obj_t usecp256k1_ecdsa_signature_serialize_der(const mp_obj_t arg){
     mp_buffer_info_t buf;
     mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
     if(buf.len != 64){
-        mp_raise_ValueError("Signature should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Signature should be 64 bytes long"));
         return mp_const_none;
     }
     secp256k1_ecdsa_signature sig;
@@ -198,7 +204,7 @@ STATIC mp_obj_t usecp256k1_ecdsa_signature_serialize_der(const mp_obj_t arg){
     size_t len = 78;
     int res = secp256k1_ecdsa_signature_serialize_der(ctx, out, &len, &sig);
     if(!res){
-        mp_raise_ValueError("Failed serializing der signature");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed serializing der signature"));
         return mp_const_none;
     }
     vstr_t vstr;
@@ -216,7 +222,7 @@ STATIC mp_obj_t usecp256k1_ecdsa_signature_serialize_compact(const mp_obj_t arg)
     mp_buffer_info_t buf;
     mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
     if(buf.len != 64){
-        mp_raise_ValueError("Signature should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Signature should be 64 bytes long"));
         return mp_const_none;
     }
     secp256k1_ecdsa_signature sig;
@@ -235,7 +241,7 @@ STATIC mp_obj_t usecp256k1_ecdsa_verify(const mp_obj_t sigarg, const mp_obj_t ms
     mp_buffer_info_t buf;
     mp_get_buffer_raise(sigarg, &buf, MP_BUFFER_READ);
     if(buf.len != 64){
-        mp_raise_ValueError("Signature should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Signature should be 64 bytes long"));
         return mp_const_none;
     }
     secp256k1_ecdsa_signature sig;
@@ -243,7 +249,7 @@ STATIC mp_obj_t usecp256k1_ecdsa_verify(const mp_obj_t sigarg, const mp_obj_t ms
 
     mp_get_buffer_raise(msgarg, &buf, MP_BUFFER_READ);
     if(buf.len != 32){
-        mp_raise_ValueError("Message should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Message should be 32 bytes long"));
         return mp_const_none;
     }
     byte msg[32];
@@ -251,7 +257,7 @@ STATIC mp_obj_t usecp256k1_ecdsa_verify(const mp_obj_t sigarg, const mp_obj_t ms
 
     mp_get_buffer_raise(pubkeyarg, &buf, MP_BUFFER_READ);
     if(buf.len != 64){
-        mp_raise_ValueError("Public key should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Public key should be 64 bytes long"));
         return mp_const_none;
     }
     secp256k1_pubkey pub;
@@ -272,7 +278,7 @@ STATIC mp_obj_t usecp256k1_ecdsa_signature_normalize(const mp_obj_t arg){
     mp_buffer_info_t buf;
     mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
     if(buf.len != 64){
-        mp_raise_ValueError("Signature should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Signature should be 64 bytes long"));
         return mp_const_none;
     }
     secp256k1_ecdsa_signature sig;
@@ -292,13 +298,13 @@ STATIC mp_obj_t usecp256k1_nonce_function_default(mp_uint_t n_args, const mp_obj
     mp_buffer_info_t msgbuf;
     mp_get_buffer_raise(args[0], &msgbuf, MP_BUFFER_READ);
     if(msgbuf.len != 32){
-        mp_raise_ValueError("Message should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Message should be 32 bytes long"));
         return mp_const_none;
     }
     mp_buffer_info_t secbuf;
     mp_get_buffer_raise(args[1], &secbuf, MP_BUFFER_READ);
     if(secbuf.len != 32){
-        mp_raise_ValueError("Secret should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Secret should be 32 bytes long"));
         return mp_const_none;
     }
     unsigned char *algo16 = NULL;
@@ -327,7 +333,7 @@ STATIC mp_obj_t usecp256k1_nonce_function_default(mp_uint_t n_args, const mp_obj
     }
     int res = secp256k1_nonce_function_default((unsigned char*)nonce.buf, msgbuf.buf, secbuf.buf, algo16, data, attempt);
     if(!res){
-        mp_raise_ValueError("Failed to calculate nonce");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to calculate nonce"));
         return mp_const_none;
     }
     return mp_obj_new_str_from_vstr(&mp_type_bytes, &nonce);
@@ -349,12 +355,12 @@ STATIC int usecp256k1_nonce_function(
     return secp256k1_nonce_function_default(nonce32, msg32, key32, algo16, data, attempt);
     // TODO: make nonce function compatible with ctypes
     // if(!mp_obj_is_callable(mp_nonce_callback)){
-    //     mp_raise_ValueError("Nonce callback should be callable...");
+    //     mp_raise_ValueError(MP_ERROR_TEXT("Nonce callback should be callable..."));
     //     return mp_const_none;
     // }
 
     // if(attempt > 100){
-    //     mp_raise_ValueError("Too many attempts... Invalid function?");
+    //     mp_raise_ValueError(MP_ERROR_TEXT("Too many attempts... Invalid function?"));
     //     // not sure it will ever get here, but just in case
     //     return secp256k1_nonce_function_default(nonce32, msg32, key32, algo16, data, attempt);
     // }
@@ -382,7 +388,7 @@ STATIC int usecp256k1_nonce_function(
     //     return 0;
     // }
     // if(buffer_info.len < 32){
-    //     mp_raise_ValueError("Returned nonce is less than 32 bytes");
+    //     mp_raise_ValueError(MP_ERROR_TEXT("Returned nonce is less than 32 bytes"));
     //     return 0;
     // }
     // memcpy(nonce32, (byte*)buffer_info.buf, 32);
@@ -394,20 +400,20 @@ STATIC mp_obj_t usecp256k1_ecdsa_sign(mp_uint_t n_args, const mp_obj_t *args){
     maybe_init_ctx();
     mp_nonce_data = NULL;
     if(n_args < 2){
-        mp_raise_ValueError("Function requires at least two arguments: message and private key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Function requires at least two arguments: message and private key"));
         return mp_const_none;
     }
     mp_buffer_info_t msgbuf;
     mp_get_buffer_raise(args[0], &msgbuf, MP_BUFFER_READ);
     if(msgbuf.len != 32){
-        mp_raise_ValueError("Message should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Message should be 32 bytes long"));
         return mp_const_none;
     }
 
     mp_buffer_info_t secbuf;
     mp_get_buffer_raise(args[1], &secbuf, MP_BUFFER_READ);
     if(secbuf.len != 32){
-        mp_raise_ValueError("Secret key should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Secret key should be 32 bytes long"));
         return mp_const_none;
     }
     secp256k1_ecdsa_signature sig;
@@ -423,7 +429,7 @@ STATIC mp_obj_t usecp256k1_ecdsa_sign(mp_uint_t n_args, const mp_obj_t *args){
         if(n_args > 3){
             mp_get_buffer_raise(args[3], &databuf, MP_BUFFER_READ);
             if(databuf.len != 32){
-                mp_raise_ValueError("Data should be 32 bytes long");
+                mp_raise_ValueError(MP_ERROR_TEXT("Data should be 32 bytes long"));
                 return mp_const_none;
             }
             data = databuf.buf;
@@ -431,7 +437,7 @@ STATIC mp_obj_t usecp256k1_ecdsa_sign(mp_uint_t n_args, const mp_obj_t *args){
         res = secp256k1_ecdsa_sign(ctx, &sig, msgbuf.buf, secbuf.buf, usecp256k1_nonce_function, data);
     }
     if(!res){
-        mp_raise_ValueError("Failed to sign");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to sign"));
         return mp_const_none;
     }
 
@@ -449,7 +455,7 @@ STATIC mp_obj_t usecp256k1_ec_seckey_verify(const mp_obj_t arg){
     mp_buffer_info_t buf;
     mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
     if(buf.len != 32){
-        mp_raise_ValueError("Private key should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Private key should be 32 bytes long"));
         return mp_const_none;
     }
 
@@ -468,7 +474,7 @@ STATIC mp_obj_t usecp256k1_ec_privkey_negate(mp_obj_t arg){
     mp_buffer_info_t buf;
     mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
     if(buf.len != 32){
-        mp_raise_ValueError("Private key should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Private key should be 32 bytes long"));
         return mp_const_none;
     }
 
@@ -476,9 +482,9 @@ STATIC mp_obj_t usecp256k1_ec_privkey_negate(mp_obj_t arg){
     vstr_init_len(&vstr, 32);
     memcpy((byte*)vstr.buf, buf.buf, 32);
 
-    int res = secp256k1_ec_privkey_negate(ctx, vstr.buf);
+    int res = secp256k1_ec_privkey_negate(ctx, (unsigned char *)vstr.buf);
     if(!res){ // never happens according to the API
-        mp_raise_ValueError("Failed to negate the private key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to negate the private key"));
         return mp_const_none;
     }
     return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
@@ -492,7 +498,7 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_negate(mp_obj_t arg){
     mp_buffer_info_t buf;
     mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
     if(buf.len != 64){
-        mp_raise_ValueError("Publick key should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Publick key should be 64 bytes long"));
         return mp_const_none;
     }
 
@@ -502,7 +508,7 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_negate(mp_obj_t arg){
 
     int res = secp256k1_ec_pubkey_negate(ctx, (secp256k1_pubkey *)vstr.buf);
     if(!res){ // never happens according to the API
-        mp_raise_ValueError("Failed to negate the public key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to negate the public key"));
         return mp_const_none;
     }
     return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
@@ -516,20 +522,20 @@ STATIC mp_obj_t usecp256k1_ec_privkey_tweak_add(mp_obj_t privarg, const mp_obj_t
     mp_buffer_info_t privbuf;
     mp_get_buffer_raise(privarg, &privbuf, MP_BUFFER_READ);
     if(privbuf.len != 32){
-        mp_raise_ValueError("Private key should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Private key should be 32 bytes long"));
         return mp_const_none;
     }
 
     mp_buffer_info_t tweakbuf;
     mp_get_buffer_raise(tweakarg, &tweakbuf, MP_BUFFER_READ);
     if(tweakbuf.len != 32){
-        mp_raise_ValueError("Tweak should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Tweak should be 32 bytes long"));
         return mp_const_none;
     }
 
     int res = secp256k1_ec_privkey_tweak_add(ctx, privbuf.buf, tweakbuf.buf);
     if(!res){ // never happens according to the API
-        mp_raise_ValueError("Failed to tweak the private key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to tweak the private key"));
         return mp_const_none;
     }
     return mp_const_none;
@@ -543,7 +549,7 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_tweak_add(mp_obj_t pubarg, const mp_obj_t t
     mp_buffer_info_t pubbuf;
     mp_get_buffer_raise(pubarg, &pubbuf, MP_BUFFER_READ);
     if(pubbuf.len != 64){
-        mp_raise_ValueError("Public key should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Public key should be 64 bytes long"));
         return mp_const_none;
     }
     secp256k1_pubkey pub;
@@ -552,13 +558,13 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_tweak_add(mp_obj_t pubarg, const mp_obj_t t
     mp_buffer_info_t tweakbuf;
     mp_get_buffer_raise(tweakarg, &tweakbuf, MP_BUFFER_READ);
     if(tweakbuf.len != 32){
-        mp_raise_ValueError("Tweak should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Tweak should be 32 bytes long"));
         return mp_const_none;
     }
 
     int res = secp256k1_ec_pubkey_tweak_add(ctx, &pub, tweakbuf.buf);
     if(!res){ // never happens according to the API
-        mp_raise_ValueError("Failed to tweak the public key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to tweak the public key"));
         return mp_const_none;
     }
     memcpy(pubbuf.buf, pub.data, 64);
@@ -573,20 +579,20 @@ STATIC mp_obj_t usecp256k1_ec_privkey_tweak_mul(mp_obj_t privarg, const mp_obj_t
     mp_buffer_info_t privbuf;
     mp_get_buffer_raise(privarg, &privbuf, MP_BUFFER_READ);
     if(privbuf.len != 32){
-        mp_raise_ValueError("Private key should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Private key should be 32 bytes long"));
         return mp_const_none;
     }
 
     mp_buffer_info_t tweakbuf;
     mp_get_buffer_raise(tweakarg, &tweakbuf, MP_BUFFER_READ);
     if(tweakbuf.len != 32){
-        mp_raise_ValueError("Tweak should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Tweak should be 32 bytes long"));
         return mp_const_none;
     }
 
     int res = secp256k1_ec_privkey_tweak_mul(ctx, privbuf.buf, tweakbuf.buf);
     if(!res){ // never happens according to the API
-        mp_raise_ValueError("Failed to tweak the public key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to tweak the public key"));
         return mp_const_none;
     }
     return mp_const_none;
@@ -600,7 +606,7 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_tweak_mul(mp_obj_t pubarg, const mp_obj_t t
     mp_buffer_info_t pubbuf;
     mp_get_buffer_raise(pubarg, &pubbuf, MP_BUFFER_READ);
     if(pubbuf.len != 64){
-        mp_raise_ValueError("Public key should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Public key should be 64 bytes long"));
         return mp_const_none;
     }
     secp256k1_pubkey pub;
@@ -609,13 +615,13 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_tweak_mul(mp_obj_t pubarg, const mp_obj_t t
     mp_buffer_info_t tweakbuf;
     mp_get_buffer_raise(tweakarg, &tweakbuf, MP_BUFFER_READ);
     if(tweakbuf.len != 32){
-        mp_raise_ValueError("Tweak should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Tweak should be 32 bytes long"));
         return mp_const_none;
     }
 
     int res = secp256k1_ec_pubkey_tweak_mul(ctx, &pub, tweakbuf.buf);
     if(!res){ // never happens according to the API
-        mp_raise_ValueError("Failed to tweak the public key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to tweak the public key"));
         return mp_const_none;
     }
     memcpy(pubbuf.buf, pub.data, 64);
@@ -638,7 +644,7 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_combine(mp_uint_t n_args, const mp_obj_t *a
                 free(pubkeys[j]);
             }
             free(pubkeys);
-            mp_raise_ValueError("All pubkeys should be 64 bytes long");
+            mp_raise_ValueError(MP_ERROR_TEXT("All pubkeys should be 64 bytes long"));
             return mp_const_none;
         }
         pubkeys[i] = (secp256k1_pubkey *)malloc(64);
@@ -646,7 +652,7 @@ STATIC mp_obj_t usecp256k1_ec_pubkey_combine(mp_uint_t n_args, const mp_obj_t *a
     }
     int res = secp256k1_ec_pubkey_combine(ctx, &pubkey, (const secp256k1_pubkey *const *)pubkeys, n_args);
     if(!res){
-        mp_raise_ValueError("Failed combining public keys");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed combining public keys"));
         return mp_const_none;
     }
     vstr_t vstr;
@@ -668,7 +674,7 @@ STATIC mp_obj_t usecp256k1_xonly_pubkey_from_pubkey(mp_obj_t arg){
     mp_buffer_info_t buf;
     mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
     if(buf.len != 64){
-        mp_raise_ValueError("Public key should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Public key should be 64 bytes long"));
         return mp_const_none;
     }
 
@@ -678,7 +684,7 @@ STATIC mp_obj_t usecp256k1_xonly_pubkey_from_pubkey(mp_obj_t arg){
 
     int res = secp256k1_xonly_pubkey_from_pubkey(ctx, (secp256k1_xonly_pubkey *)vstr.buf, &parity, buf.buf);
     if(!res){
-        mp_raise_ValueError("Failed to convert the public key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to convert the public key"));
         return mp_const_none;
     }
 
@@ -696,7 +702,7 @@ STATIC mp_obj_t usecp256k1_schnorrsig_verify(const mp_obj_t sigarg, const mp_obj
     mp_buffer_info_t buf;
     mp_get_buffer_raise(sigarg, &buf, MP_BUFFER_READ);
     if(buf.len != 64){
-        mp_raise_ValueError("Signature should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Signature should be 64 bytes long"));
         return mp_const_none;
     }
     byte sig[64];
@@ -704,7 +710,7 @@ STATIC mp_obj_t usecp256k1_schnorrsig_verify(const mp_obj_t sigarg, const mp_obj
 
     mp_get_buffer_raise(msgarg, &buf, MP_BUFFER_READ);
     if(buf.len != 32){
-        mp_raise_ValueError("Message should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Message should be 32 bytes long"));
         return mp_const_none;
     }
     byte msg[32];
@@ -712,7 +718,7 @@ STATIC mp_obj_t usecp256k1_schnorrsig_verify(const mp_obj_t sigarg, const mp_obj
 
     mp_get_buffer_raise(pubkeyarg, &buf, MP_BUFFER_READ);
     if(buf.len != 64){
-        mp_raise_ValueError("Public key should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Public key should be 64 bytes long"));
         return mp_const_none;
     }
     secp256k1_xonly_pubkey pub;
@@ -733,17 +739,16 @@ STATIC mp_obj_t usecp256k1_keypair_create(mp_obj_t arg){
     mp_buffer_info_t buf;
     mp_get_buffer_raise(arg, &buf, MP_BUFFER_READ);
     if(buf.len != 32){
-        mp_raise_ValueError("Secret should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Secret should be 32 bytes long"));
         return mp_const_none;
     }
 
     vstr_t vstr;
     vstr_init_len(&vstr, 96);
-    int parity = 0;
 
     int res = secp256k1_keypair_create(ctx, (secp256k1_keypair *)vstr.buf, buf.buf);
     if(!res){
-        mp_raise_ValueError("Failed to create keypair");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to create keypair"));
         return mp_const_none;
     }
 
@@ -757,27 +762,27 @@ STATIC mp_obj_t usecp256k1_schnorrsig_sign(mp_uint_t n_args, const mp_obj_t *arg
     maybe_init_ctx();
     mp_nonce_data = NULL;
     if(n_args < 2){
-        mp_raise_ValueError("Function requires at least two arguments: message and private key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Function requires at least two arguments: message and private key"));
         return mp_const_none;
     }
     mp_buffer_info_t msgbuf;
     mp_get_buffer_raise(args[0], &msgbuf, MP_BUFFER_READ);
     if(msgbuf.len != 32){
-        mp_raise_ValueError("Message should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Message should be 32 bytes long"));
         return mp_const_none;
     }
 
     mp_buffer_info_t secbuf;
     mp_get_buffer_raise(args[1], &secbuf, MP_BUFFER_READ);
     if(secbuf.len != 32 && secbuf.len != 96){
-        mp_raise_ValueError("Secret key should be 32 bytes long or 96 bytes long (keypair)");
+        mp_raise_ValueError(MP_ERROR_TEXT("Secret key should be 32 bytes long or 96 bytes long (keypair)"));
         return mp_const_none;
     }
     byte keypair[96];
     if(secbuf.len == 32){
         int res = secp256k1_keypair_create(ctx, (secp256k1_keypair *)keypair, secbuf.buf);
         if(!res){
-            mp_raise_ValueError("Failed to create keypair");
+            mp_raise_ValueError(MP_ERROR_TEXT("Failed to create keypair"));
             return mp_const_none;
         }
     }else{
@@ -796,7 +801,7 @@ STATIC mp_obj_t usecp256k1_schnorrsig_sign(mp_uint_t n_args, const mp_obj_t *arg
         if(n_args > 3){
             mp_get_buffer_raise(args[3], &databuf, MP_BUFFER_READ);
             if(databuf.len != 32){
-                mp_raise_ValueError("Data should be 32 bytes long");
+                mp_raise_ValueError(MP_ERROR_TEXT("Data should be 32 bytes long"));
                 return mp_const_none;
             }
             data = databuf.buf;
@@ -804,7 +809,7 @@ STATIC mp_obj_t usecp256k1_schnorrsig_sign(mp_uint_t n_args, const mp_obj_t *arg
         res = secp256k1_schnorrsig_sign(ctx, sig, msgbuf.buf, (secp256k1_keypair *)keypair, data);
     }
     if(!res){
-        mp_raise_ValueError("Failed to sign");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to sign"));
         return mp_const_none;
     }
 
@@ -824,20 +829,20 @@ STATIC mp_obj_t usecp256k1_ecdsa_sign_recoverable(mp_uint_t n_args, const mp_obj
     maybe_init_ctx();
     mp_nonce_data = NULL;
     if(n_args < 2){
-        mp_raise_ValueError("Function requires at least two arguments: message and private key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Function requires at least two arguments: message and private key"));
         return mp_const_none;
     }
     mp_buffer_info_t msgbuf;
     mp_get_buffer_raise(args[0], &msgbuf, MP_BUFFER_READ);
     if(msgbuf.len != 32){
-        mp_raise_ValueError("Message should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Message should be 32 bytes long"));
         return mp_const_none;
     }
 
     mp_buffer_info_t secbuf;
     mp_get_buffer_raise(args[1], &secbuf, MP_BUFFER_READ);
     if(secbuf.len != 32){
-        mp_raise_ValueError("Secret key should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Secret key should be 32 bytes long"));
         return mp_const_none;
     }
     secp256k1_ecdsa_recoverable_signature sig;
@@ -853,7 +858,7 @@ STATIC mp_obj_t usecp256k1_ecdsa_sign_recoverable(mp_uint_t n_args, const mp_obj
         if(n_args > 3){
             mp_get_buffer_raise(args[3], &databuf, MP_BUFFER_READ);
             if(databuf.len != 32){
-                mp_raise_ValueError("Data should be 32 bytes long");
+                mp_raise_ValueError(MP_ERROR_TEXT("Data should be 32 bytes long"));
                 return mp_const_none;
             }
             data = databuf.buf;
@@ -861,7 +866,7 @@ STATIC mp_obj_t usecp256k1_ecdsa_sign_recoverable(mp_uint_t n_args, const mp_obj
         res = secp256k1_ecdsa_sign_recoverable(ctx, &sig, msgbuf.buf, secbuf.buf, usecp256k1_nonce_function, data);
     }
     if(!res){
-        mp_raise_ValueError("Failed to sign");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to sign"));
         return mp_const_none;
     }
 
