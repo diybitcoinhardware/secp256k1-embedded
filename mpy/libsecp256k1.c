@@ -718,7 +718,7 @@ STATIC mp_obj_t usecp256k1_schnorrsig_verify(const mp_obj_t sigarg, const mp_obj
     secp256k1_xonly_pubkey pub;
     memcpy(pub.data, buf.buf, 64);
 
-    int res = secp256k1_schnorrsig_verify(ctx, sig, msg, &pub);
+    int res = secp256k1_schnorrsig_verify(ctx, sig, msg, 32, &pub);
     if(res){
         return mp_const_true;
     }
