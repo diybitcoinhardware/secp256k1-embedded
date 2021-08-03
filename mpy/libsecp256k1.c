@@ -790,7 +790,7 @@ STATIC mp_obj_t usecp256k1_schnorrsig_sign(mp_uint_t n_args, const mp_obj_t *arg
 
     int res=0;
     if(n_args == 2){
-        res = secp256k1_schnorrsig_sign(ctx, sig, msgbuf.buf, (secp256k1_keypair *)keypair, NULL, NULL);
+        res = secp256k1_schnorrsig_sign(ctx, sig, msgbuf.buf, (secp256k1_keypair *)keypair, NULL);
     }else if(n_args >= 3){
         mp_nonce_callback = args[2];
         if(n_args > 3){
@@ -801,7 +801,7 @@ STATIC mp_obj_t usecp256k1_schnorrsig_sign(mp_uint_t n_args, const mp_obj_t *arg
             }
             data = databuf.buf;
         }
-        res = secp256k1_schnorrsig_sign(ctx, sig, msgbuf.buf, (secp256k1_keypair *)keypair, NULL, data);
+        res = secp256k1_schnorrsig_sign(ctx, sig, msgbuf.buf, (secp256k1_keypair *)keypair, data);
     }
     if(!res){
         mp_raise_ValueError("Failed to sign");
