@@ -14,6 +14,9 @@
 #include "py/runtime.h"
 #include "py/builtin.h"
 #include "py/gc.h"
+#include "py/stream.h"
+#include "rangeproof_preallocated/rangeproof_preallocated.h"
+
 
 #define malloc(b) gc_alloc((b), false)
 #define free gc_free
@@ -1210,7 +1213,6 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
                 min_value, &commit, vbf.buf, nonce.buf,
                 exp, min_bits, value, msg.buf, msg.len, extra.buf, extra.len, &gen);
     if(!res){
-        vstr_free(&vstr);
         mp_raise_ValueError("Failed to create a proof");
         return mp_const_none;
     }
@@ -1219,6 +1221,101 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
 }
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_rangeproof_sign_obj, 7, usecp256k1_rangeproof_sign);
+
+// rangeproof_sign_to(stream, mem_ptr, mem_len,
+//                    nonce, value, value_commitment, vbf, message, extra, gen, min_value=1, exp=0, min_bits=52)
+STATIC mp_obj_t usecp256k1_rangeproof_sign_to(mp_uint_t n_args, const mp_obj_t *args){
+    maybe_init_ctx();
+    if(n_args < 10){
+        mp_raise_ValueError("Function requires at least 10 arguments");
+        return mp_const_none;
+    }
+    mp_obj_t stream = args[0];
+    mp_get_stream_raise(stream, MP_STREAM_OP_WRITE);
+
+    // preallocated memory
+    uint64_t memptr = get_uint64(args[1]);
+    uint64_t memlen = get_uint64(args[2]);
+
+    size_t prooflen = 5134;
+
+    if(memlen < prooflen){
+        mp_raise_ValueError("Not enough memory for proof allocation.");
+    }
+
+    mp_buffer_info_t nonce;
+    mp_get_buffer_raise(args[3], &nonce, MP_BUFFER_READ);
+    if(nonce.len != 32){
+        mp_raise_ValueError("Nonce should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    uint64_t value = get_uint64(args[4]);
+
+    mp_buffer_info_t commitbuf;
+    mp_get_buffer_raise(args[5], &commitbuf, MP_BUFFER_READ);
+    if(commitbuf.len != 64){
+        mp_raise_ValueError("Commitment should be 64 bytes long");
+        return mp_const_none;
+    }
+    secp256k1_pedersen_commitment commit;
+    memcpy(commit.data, commitbuf.buf, 64);
+
+    mp_buffer_info_t vbf;
+    mp_get_buffer_raise(args[6], &vbf, MP_BUFFER_READ);
+    if(vbf.len != 32){
+        mp_raise_ValueError("Value blinding factor should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    mp_buffer_info_t msg;
+    mp_get_buffer_raise(args[7], &msg, MP_BUFFER_READ);
+
+    mp_buffer_info_t extra;
+    mp_get_buffer_raise(args[8], &extra, MP_BUFFER_READ);
+
+    mp_buffer_info_t genbuf;
+    mp_get_buffer_raise(args[9], &genbuf, MP_BUFFER_READ);
+    if(genbuf.len != 64){
+        mp_raise_ValueError("Commitment should be 64 bytes long");
+        return mp_const_none;
+    }
+    secp256k1_generator gen;
+    memcpy(gen.data, genbuf.buf, 64);
+
+    uint64_t min_value = 1;
+    if(n_args > 10){
+        min_value = get_uint64(args[10]);
+    }
+    int exp = 0;
+    if(n_args > 11){
+        exp = MP_OBJ_SMALL_INT_VALUE(args[11]);
+    }
+    int min_bits = 52;
+    if(n_args > 12){
+        min_value = MP_OBJ_SMALL_INT_VALUE(args[12]);
+    }
+
+    int res = secp256k1_rangeproof_sign_preallocated(ctx, (void*)memptr, &prooflen,
+                min_value, &commit, vbf.buf, nonce.buf,
+                exp, min_bits, value, msg.buf, msg.len, extra.buf, extra.len, &gen,
+                (void *)(memptr+prooflen), (memlen-prooflen));
+    if(!res){
+        mp_raise_ValueError("Failed to create a proof");
+        return mp_const_none;
+    }
+    // write in chunks of 64 bytes
+    size_t l = 0;
+    while(l+64 < prooflen){
+        mp_stream_write(stream, (void *)(memptr + l), 64, MP_STREAM_RW_WRITE);
+        l += 64;
+    }
+    mp_stream_write(stream, (void *)(memptr + l), (prooflen - l), MP_STREAM_RW_WRITE);
+    return mp_obj_new_int_from_ull(prooflen);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_rangeproof_sign_to_obj, 10, usecp256k1_rangeproof_sign_to);
+
 
 // rangeproof_rewind(proof, nonce, value_commitment, script_pubkey, generator)
 STATIC mp_obj_t usecp256k1_rangeproof_rewind(mp_uint_t n_args, const mp_obj_t *args){
@@ -1276,6 +1373,11 @@ STATIC mp_obj_t usecp256k1_rangeproof_rewind(mp_uint_t n_args, const mp_obj_t *a
                             script_pubkey.buf, script_pubkey.len,
                             generator.buf);
 
+    if(!res){
+        mp_raise_ValueError("Failed to rewind the proof");
+        return mp_const_none;
+    }
+
     // value_out, vbf_out, msg, min_value, max_value
     mp_obj_t items[5];
     items[0] = mp_obj_new_int_from_ull(value_out);
@@ -1294,6 +1396,113 @@ STATIC mp_obj_t usecp256k1_rangeproof_rewind(mp_uint_t n_args, const mp_obj_t *a
 }
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_rangeproof_rewind_obj, 5, usecp256k1_rangeproof_rewind);
+
+// rangeproof_rewind_from(stream, len, memptr, memlen, nonce, value_commitment, script_pubkey, generator)
+STATIC mp_obj_t usecp256k1_rangeproof_rewind_from(mp_uint_t n_args, const mp_obj_t *args){
+    maybe_init_ctx();
+    if(n_args < 8){
+        mp_raise_ValueError("Function requires 8 arguments");
+        return mp_const_none;
+    }
+    // stream to read
+    mp_obj_t stream = args[0];
+    mp_get_stream_raise(stream, MP_STREAM_OP_READ);
+    uint64_t prooflen = get_uint64(args[1]);
+
+    // preallocated memory
+    uint64_t memptr = get_uint64(args[2]);
+    uint64_t memlen = get_uint64(args[3]);
+
+    size_t l = 0;
+    if(memlen < prooflen){
+        mp_raise_ValueError("Not enough memory for proof.");
+    }
+    int err = 0;
+    while(l<prooflen-64){
+        mp_stream_read_exactly(stream, (byte*)(memptr+l), 64, &err);
+        if(err){
+            mp_raise_ValueError("Failed to read from stream");
+        }
+        l += 64;
+    }
+    mp_stream_read_exactly(stream, (byte*)(memptr+l), (prooflen-l), &err);
+    if(err){
+        mp_raise_ValueError("Failed to read from stream");
+    }
+
+    // mp_buffer_info_t proof;
+    // mp_get_buffer_raise(args[0], &proof, MP_BUFFER_READ);
+
+    mp_buffer_info_t nonce;
+    mp_get_buffer_raise(args[4], &nonce, MP_BUFFER_READ);
+    if(nonce.len != 32){
+        mp_raise_ValueError("Nonce should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    mp_buffer_info_t value_commitment;
+    mp_get_buffer_raise(args[5], &value_commitment, MP_BUFFER_READ);
+    if(value_commitment.len != 64){
+        mp_raise_ValueError("Value commitment should be 64 bytes long");
+        return mp_const_none;
+    }
+
+    mp_buffer_info_t script_pubkey;
+    mp_get_buffer_raise(args[6], &script_pubkey, MP_BUFFER_READ);
+
+    mp_buffer_info_t generator;
+    mp_get_buffer_raise(args[7], &generator, MP_BUFFER_READ);
+    if(generator.len != 64){
+        mp_raise_ValueError("Generator should be 64 bytes long");
+        return mp_const_none;
+    }
+
+    vstr_t vbf_out;
+    vstr_init_len(&vbf_out, 32);
+
+    size_t msglen = 64;
+    if(n_args > 8){
+        msglen = get_uint64(args[8]);
+    }
+    size_t msglenout = msglen;
+    vstr_t msg;
+    vstr_init_len(&msg, msglen);
+
+    uint64_t value_out;
+    uint64_t min_value;
+    uint64_t max_value;
+
+    int res = secp256k1_rangeproof_rewind_preallocated(ctx, vbf_out.buf, &value_out,
+                            msg.buf, &msglenout,
+                            nonce.buf, &min_value, &max_value,
+                            value_commitment.buf, (void*)memptr, prooflen,
+                            script_pubkey.buf, script_pubkey.len,
+                            generator.buf, (void *)(memptr+prooflen), (memlen-prooflen));
+
+    if(!res){
+        mp_raise_ValueError("Failed to rewind the proof");
+        return mp_const_none;
+    }
+
+    // value_out, vbf_out, msg, min_value, max_value
+    mp_obj_t items[5];
+    items[0] = mp_obj_new_int_from_ull(value_out);
+    items[1] = mp_obj_new_str_from_vstr(&mp_type_bytes, &vbf_out);
+    if(msglen == msglenout){
+        items[2] = mp_obj_new_str_from_vstr(&mp_type_bytes, &msg);
+    }else{
+        vstr_t msgout;
+        vstr_init_len(&msgout, msglenout);
+        memcpy(msgout.buf, msg.buf, msglenout);
+        items[2] = mp_obj_new_str_from_vstr(&mp_type_bytes, &msgout);
+    }
+    items[3] = mp_obj_new_int_from_ull(min_value);
+    items[4] = mp_obj_new_int_from_ull(max_value);
+    return mp_obj_new_tuple(5, items);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_rangeproof_rewind_from_obj, 8, usecp256k1_rangeproof_rewind_from);
+
 
 /****************************** MODULE ******************************/
 
@@ -1344,6 +1553,9 @@ STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
 
     { MP_ROM_QSTR(MP_QSTR_rangeproof_sign), MP_ROM_PTR(&usecp256k1_rangeproof_sign_obj) },
     { MP_ROM_QSTR(MP_QSTR_rangeproof_rewind), MP_ROM_PTR(&usecp256k1_rangeproof_rewind_obj) },
+
+    { MP_ROM_QSTR(MP_QSTR_rangeproof_sign_to), MP_ROM_PTR(&usecp256k1_rangeproof_sign_to_obj) },
+    { MP_ROM_QSTR(MP_QSTR_rangeproof_rewind_from), MP_ROM_PTR(&usecp256k1_rangeproof_rewind_from_obj) },
 };
 STATIC MP_DEFINE_CONST_DICT(secp256k1_module_globals, secp256k1_module_globals_table);
 
