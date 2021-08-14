@@ -1207,8 +1207,8 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
     }
 
     vstr_t vstr;
-    vstr_init_len(&vstr, 5134);
-    size_t prooflen = 5134;
+    size_t prooflen = 5200;
+    vstr_init_len(&vstr, 5200);
     int res = secp256k1_rangeproof_sign(ctx, vstr.buf, &prooflen,
                 min_value, &commit, vbf.buf, nonce.buf,
                 exp, min_bits, value, msg.buf, msg.len, extra.buf, extra.len, &gen);
@@ -1216,7 +1216,7 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
         mp_raise_ValueError("Failed to create a proof");
         return mp_const_none;
     }
-    vstr_cut_tail_bytes(&vstr, 5134-prooflen);
+    vstr_cut_tail_bytes(&vstr, 5200-prooflen);
     return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
 }
 
@@ -1234,10 +1234,10 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign_to(mp_uint_t n_args, const mp_obj_t *
     mp_get_stream_raise(stream, MP_STREAM_OP_WRITE);
 
     // preallocated memory
-    uint64_t memptr = get_uint64(args[1]);
-    uint64_t memlen = get_uint64(args[2]);
+    intptr_t memptr = (intptr_t)get_uint64(args[1]);
+    intptr_t memlen = (intptr_t)get_uint64(args[2]);
 
-    size_t prooflen = 5134;
+    size_t prooflen = 5200;
 
     if(memlen < prooflen){
         mp_raise_ValueError("Not enough memory for proof allocation.");
@@ -1304,6 +1304,7 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign_to(mp_uint_t n_args, const mp_obj_t *
         mp_raise_ValueError("Failed to create a proof");
         return mp_const_none;
     }
+
     // write in chunks of 64 bytes
     size_t l = 0;
     while(l+64 < prooflen){
@@ -1407,18 +1408,20 @@ STATIC mp_obj_t usecp256k1_rangeproof_rewind_from(mp_uint_t n_args, const mp_obj
     // stream to read
     mp_obj_t stream = args[0];
     mp_get_stream_raise(stream, MP_STREAM_OP_READ);
-    uint64_t prooflen = get_uint64(args[1]);
+    size_t prooflen = (size_t)get_uint64(args[1]);
 
     // preallocated memory
-    uint64_t memptr = get_uint64(args[2]);
-    uint64_t memlen = get_uint64(args[3]);
+    intptr_t memptr = (intptr_t)get_uint64(args[2]);
+    intptr_t memlen = (intptr_t)get_uint64(args[3]);
+    // 32bit alignment
+    intptr_t memoff = (prooflen / 4 + 1)*4;
 
     size_t l = 0;
-    if(memlen < prooflen){
+    if(memlen < memoff){
         mp_raise_ValueError("Not enough memory for proof.");
     }
     int err = 0;
-    while(l<prooflen-64){
+    while(l < (prooflen - 64)){
         mp_stream_read_exactly(stream, (byte*)(memptr+l), 64, &err);
         if(err){
             mp_raise_ValueError("Failed to read from stream");
@@ -1477,7 +1480,7 @@ STATIC mp_obj_t usecp256k1_rangeproof_rewind_from(mp_uint_t n_args, const mp_obj
                             nonce.buf, &min_value, &max_value,
                             value_commitment.buf, (void*)memptr, prooflen,
                             script_pubkey.buf, script_pubkey.len,
-                            generator.buf, (void *)(memptr+prooflen), (memlen-prooflen));
+                            generator.buf, (void *)(memptr+memoff), (memlen-memoff));
 
     if(!res){
         mp_raise_ValueError("Failed to rewind the proof");

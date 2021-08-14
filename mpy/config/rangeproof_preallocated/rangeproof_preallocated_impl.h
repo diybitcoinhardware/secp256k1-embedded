@@ -7,8 +7,8 @@ SECP256K1_INLINE static int secp256k1_rangeproof_sign_preallocated_impl(
  unsigned char *proof, size_t *plen, uint64_t min_value,
  const secp256k1_ge *commit, const unsigned char *blind, const unsigned char *nonce, int exp, int min_bits, uint64_t value,
  const unsigned char *message, size_t msg_len, const unsigned char *extra_commit, size_t extra_commit_len, const secp256k1_ge* genp,
- void * preallocated_ptr, uint64_t allocated_len){
-    uint64_t ptr = (uint64_t)preallocated_ptr;
+ void * preallocated_ptr, intptr_t allocated_len){
+    intptr_t ptr = (intptr_t)preallocated_ptr;
 
     secp256k1_gej* pubs = (secp256k1_gej*)ptr; // [128];     /* Candidate digits for our proof, most inferred. */
     ptr += 128*sizeof(secp256k1_gej);
@@ -24,7 +24,7 @@ SECP256K1_INLINE static int secp256k1_rangeproof_sign_preallocated_impl(
     unsigned char* prep = (unsigned char*)ptr; // [4096];
     ptr += 4096;
     unsigned char* tmp = (unsigned char*)ptr; // [33];
-    ptr += 33;
+    ptr += 36; // alignment
     unsigned char *signs;          /* Location of sign flags in the proof. */
     uint64_t v;
     uint64_t scale;                /* scale = 10^exp. */
@@ -40,7 +40,7 @@ SECP256K1_INLINE static int secp256k1_rangeproof_sign_preallocated_impl(
     size_t npub;
     len = 0;
 
-    uint64_t required_preallocated = ptr-(uint64_t)preallocated_ptr;
+    intptr_t required_preallocated = ptr-(intptr_t)preallocated_ptr;
     if(required_preallocated > allocated_len){
         return 0;
     }
@@ -170,7 +170,7 @@ SECP256K1_INLINE static int secp256k1_rangeproof_sign_preallocated_impl(
 int secp256k1_rangeproof_sign_preallocated(const secp256k1_context* ctx, unsigned char *proof, size_t *plen, uint64_t min_value,
  const secp256k1_pedersen_commitment *commit, const unsigned char *blind, const unsigned char *nonce, int exp, int min_bits, uint64_t value,
  const unsigned char *message, size_t msg_len, const unsigned char *extra_commit, size_t extra_commit_len, const secp256k1_generator* gen,
- void * preallocated_ptr, uint64_t allocated_len){
+ void * preallocated_ptr, intptr_t allocated_len){
     secp256k1_ge commitp;
     secp256k1_ge genp;
     VERIFY_CHECK(ctx != NULL);
@@ -194,8 +194,8 @@ int secp256k1_rangeproof_sign_preallocated(const secp256k1_context* ctx, unsigne
 SECP256K1_INLINE static int secp256k1_rangeproof_rewind_preallocated_inner(secp256k1_scalar *blind, uint64_t *v,
  unsigned char *m, size_t *mlen, secp256k1_scalar *ev, secp256k1_scalar *s,
  size_t *rsizes, size_t rings, const unsigned char *nonce, const secp256k1_ge *commit, const unsigned char *proof, size_t len, const secp256k1_ge *genp,
- void * preallocated_ptr, uint64_t allocated_len) {
-    uint64_t ptr = (uint64_t)preallocated_ptr;
+ void * preallocated_ptr, intptr_t allocated_len) {
+    intptr_t ptr = (intptr_t)preallocated_ptr;
     secp256k1_scalar* s_orig = (secp256k1_scalar*)ptr; // [128];
     ptr += 128*sizeof(secp256k1_scalar);
     secp256k1_scalar* sec = (secp256k1_scalar*)ptr; // [32];
@@ -206,7 +206,7 @@ SECP256K1_INLINE static int secp256k1_rangeproof_rewind_preallocated_inner(secp2
     unsigned char* tmp = (unsigned char*)ptr; // [32];
     ptr += 32;
 
-    uint64_t required_preallocated = ptr-(uint64_t)preallocated_ptr;
+    intptr_t required_preallocated = ptr-(intptr_t)preallocated_ptr;
     if(required_preallocated > allocated_len){
         return 0;
     }
@@ -330,8 +330,8 @@ SECP256K1_INLINE static int secp256k1_rangeproof_verify_preallocated_impl(const 
  const secp256k1_ecmult_gen_context* ecmult_gen_ctx,
  unsigned char *blindout, uint64_t *value_out, unsigned char *message_out, size_t *outlen, const unsigned char *nonce,
  uint64_t *min_value, uint64_t *max_value, const secp256k1_ge *commit, const unsigned char *proof, size_t plen, const unsigned char *extra_commit, size_t extra_commit_len, const secp256k1_ge* genp,
- void * preallocated_ptr, uint64_t allocated_len) {
-    uint64_t ptr = (uint64_t)preallocated_ptr;
+ void * preallocated_ptr, intptr_t allocated_len) {
+    intptr_t ptr = (intptr_t)preallocated_ptr;
 
     secp256k1_gej accj;
     secp256k1_gej* pubs = (secp256k1_gej*)ptr; //[128];
@@ -356,13 +356,13 @@ SECP256K1_INLINE static int secp256k1_rangeproof_verify_preallocated_impl(const 
     int offset_post_header;
     uint64_t scale;
     unsigned char* signs = (unsigned char*)ptr; //[31];
-    ptr += 31;
+    ptr += 32; // alignment
 
     unsigned char* m = (unsigned char*)ptr; //[33];
-    ptr += 33;
+    ptr += 36; // alignment
     const unsigned char *e0;
 
-    uint64_t required_preallocated = ptr-(uint64_t)preallocated_ptr;
+    intptr_t required_preallocated = ptr-(intptr_t)preallocated_ptr;
     if(required_preallocated > allocated_len){
         return 0;
     }
@@ -492,7 +492,7 @@ int secp256k1_rangeproof_rewind_preallocated(const secp256k1_context* ctx,
  unsigned char *blind_out, uint64_t *value_out, unsigned char *message_out, size_t *outlen, const unsigned char *nonce,
  uint64_t *min_value, uint64_t *max_value,
  const secp256k1_pedersen_commitment *commit, const unsigned char *proof, size_t plen, const unsigned char *extra_commit, size_t extra_commit_len, const secp256k1_generator* gen,
- void * preallocated_ptr, uint64_t allocated_len) {
+ void * preallocated_ptr, intptr_t allocated_len) {
     secp256k1_ge commitp;
     secp256k1_ge genp;
     VERIFY_CHECK(ctx != NULL);
