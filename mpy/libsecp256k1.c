@@ -1146,6 +1146,55 @@ uint64_t get_uint64(mp_obj_t arg){
     return value;
 }
 
+// vals, abfs, vbfs, psbtv.num_inputs
+STATIC mp_obj_t usecp256k1_pedersen_blind_generator_blind_sum(mp_uint_t n_args, const mp_obj_t *args){
+    maybe_init_ctx();
+    mp_obj_list_t *vals = MP_OBJ_TO_PTR(args[0]);
+    mp_obj_list_t *abfs = MP_OBJ_TO_PTR(args[1]);
+    mp_obj_list_t *vbfs = MP_OBJ_TO_PTR(args[2]);
+    size_t n_total = (size_t)vals->len;
+    // TODO: check all lists have the same length
+    size_t n_inputs = (size_t)get_uint64(args[3]);
+
+    uint64_t * value = (uint64_t *)malloc(n_total*sizeof(uint64_t));
+    unsigned char **gens = (unsigned char **)malloc(n_total*sizeof(unsigned char *));
+    unsigned char **bfactors = (unsigned char **)malloc(n_total*sizeof(unsigned char *));
+    mp_buffer_info_t buf;
+
+    vstr_t vstr;
+    vstr_init_len(&vstr, 32);
+
+    // TODO: test length of buffers
+    for(int i = 0; i < n_total; i++){
+        value[i] = get_uint64(vals->items[i]);
+        mp_get_buffer(abfs->items[i], &buf, MP_BUFFER_READ);
+        gens[i] = buf.buf;
+        mp_get_buffer(vbfs->items[i], &buf, MP_BUFFER_READ);
+        if(i == n_total-1){
+            memcpy(vstr.buf, buf.buf, 32);
+            bfactors[i] = vstr.buf;
+        }else{
+            bfactors[i] = buf.buf;
+        }
+    }
+    int res = secp256k1_pedersen_blind_generator_blind_sum(ctx, value, gens, bfactors, n_total, n_inputs);
+    free(value);
+    free(gens);
+    free(bfactors);
+    if(!res){
+        mp_raise_ValueError("Failed to calculate sum");
+    }
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_pedersen_blind_generator_blind_sum_obj, 4, usecp256k1_pedersen_blind_generator_blind_sum);
+
+// surjection proofs
+
+// surjectionproof_initialize
+// surjectionproof_generate
+// surjectionproof_serialize
+
 // rangeproof_sign(nonce, value, value_commitment, vbf, message, extra, gen, min_value=1, exp=0, min_bits=52)
 STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *args){
     maybe_init_ctx();
@@ -1553,6 +1602,7 @@ STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_pedersen_commit), MP_ROM_PTR(&usecp256k1_pedersen_commit_obj) },
     { MP_ROM_QSTR(MP_QSTR_pedersen_commitment_serialize), MP_ROM_PTR(&usecp256k1_pedersen_commitment_serialize_obj) },
     { MP_ROM_QSTR(MP_QSTR_pedersen_commitment_parse), MP_ROM_PTR(&usecp256k1_pedersen_commitment_parse_obj) },
+    { MP_ROM_QSTR(MP_QSTR_pedersen_blind_generator_blind_sum), MP_ROM_PTR(&usecp256k1_pedersen_blind_generator_blind_sum_obj) },
 
     { MP_ROM_QSTR(MP_QSTR_rangeproof_sign), MP_ROM_PTR(&usecp256k1_rangeproof_sign_obj) },
     { MP_ROM_QSTR(MP_QSTR_rangeproof_rewind), MP_ROM_PTR(&usecp256k1_rangeproof_rewind_obj) },
