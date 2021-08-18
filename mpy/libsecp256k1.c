@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
+#include "libsecp256k1-config.h"
 #include "include/secp256k1.h"
 #include "include/secp256k1_preallocated.h"
 #include "include/secp256k1_extrakeys.h"
@@ -8,6 +9,7 @@
 #include "include/secp256k1_recovery.h"
 #include "include/secp256k1_generator.h"
 #include "include/secp256k1_rangeproof.h"
+#include "include/secp256k1_surjectionproof.h"
 #include "py/obj.h"
 #include "py/objint.h"
 #include "py/binary.h"
@@ -1191,9 +1193,98 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_pedersen_blind_generator_blind_sum
 
 // surjection proofs
 
-// surjectionproof_initialize
-// surjectionproof_generate
-// surjectionproof_serialize
+// surjectionproof_initialize(in_assets, asset, seed, tags_to_use=None, iterations=100)
+STATIC mp_obj_t usecp256k1_surjectionproof_initialize(mp_uint_t n_args, const mp_obj_t *args){
+    maybe_init_ctx();
+    mp_obj_list_t *in_assets = MP_OBJ_TO_PTR(args[0]);
+    mp_buffer_info_t asset;
+    mp_get_buffer_raise(args[1], &asset, MP_BUFFER_READ);
+    mp_buffer_info_t seed;
+    mp_get_buffer_raise(args[2], &seed, MP_BUFFER_READ);
+
+    size_t iterations = 100;
+    size_t n_inputs = in_assets->len;
+    // min(3, len(in_assets))
+    size_t n_tags_to_use = 3;
+    if(n_inputs < n_tags_to_use){
+        n_tags_to_use = n_inputs;
+    }
+
+    size_t max_surj_size = 8268; // ((2 + (n_inputs + 7)/8 + 32 * (1 + (n_tags_to_use)))/4+1)*4;
+    vstr_t proof;
+    vstr_init_len(&proof, max_surj_size);
+    size_t input_index = 0;
+
+    unsigned char * in_assets_buf = (unsigned char *)malloc(32*n_inputs);
+    mp_buffer_info_t buf;
+    for(int i=0; i<n_inputs; i++){
+        mp_get_buffer(in_assets->items[i], &buf, MP_BUFFER_READ);
+        memcpy(in_assets_buf+(i*32), buf.buf, 32);
+    }
+    int res = secp256k1_surjectionproof_initialize(ctx, proof.buf, &input_index, in_assets_buf, n_inputs, n_tags_to_use, (char *)asset.buf, iterations, seed.buf);
+    free(in_assets_buf);
+    if(!res){
+        mp_raise_ValueError("Failed to initialize surj proof");
+    }
+    mp_obj_t items[2];
+    items[0] = mp_obj_new_str_from_vstr(&mp_type_bytes, &proof);
+    items[1] = mp_obj_new_int_from_ull(input_index);
+    return mp_obj_new_tuple(2, items);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_surjectionproof_initialize_obj, 3, usecp256k1_surjectionproof_initialize);
+
+// surjectionproof_generate(proof, in_idx, in_tags, out_tag, in_abf, out_abf)
+STATIC mp_obj_t usecp256k1_surjectionproof_generate(mp_uint_t n_args, const mp_obj_t *args){
+    maybe_init_ctx();
+    mp_buffer_info_t proof;
+    mp_get_buffer_raise(args[0], &proof, MP_BUFFER_READ);
+    size_t in_idx = (size_t)get_uint64(args[1]);
+    mp_obj_list_t *in_assets = MP_OBJ_TO_PTR(args[2]);
+    mp_buffer_info_t asset;
+    mp_get_buffer_raise(args[3], &asset, MP_BUFFER_READ);
+    mp_buffer_info_t in_abf;
+    mp_get_buffer_raise(args[4], &in_abf, MP_BUFFER_READ);
+    mp_buffer_info_t out_abf;
+    mp_get_buffer_raise(args[5], &out_abf, MP_BUFFER_READ);
+
+    size_t n_inputs = in_assets->len;
+
+    unsigned char * in_assets_buf = (unsigned char *)malloc(32*n_inputs);
+    mp_buffer_info_t buf;
+    for(int i=0; i<n_inputs; i++){
+        mp_get_buffer(in_assets->items[i], &buf, MP_BUFFER_READ);
+        memcpy(in_assets_buf+(i*32), buf.buf, 32);
+    }
+    int res = secp256k1_surjectionproof_generate(ctx, proof.buf, in_assets_buf, n_inputs, asset.buf, in_idx, in_abf.buf, out_abf.buf);
+    free(in_assets_buf);
+    if(!res){
+        mp_raise_ValueError("Failed to generate surj proof");
+    }
+    return args[0];
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_surjectionproof_generate_obj, 6, usecp256k1_surjectionproof_generate);
+
+// surjectionproof_serialize(proof)
+STATIC mp_obj_t usecp256k1_surjectionproof_serialize(const mp_obj_t arg){
+    maybe_init_ctx();
+    mp_buffer_info_t proof;
+    mp_get_buffer_raise(arg, &proof, MP_BUFFER_READ);
+
+    size_t l = secp256k1_surjectionproof_serialized_size(ctx, proof.buf);
+    vstr_t vstr;
+    vstr_init_len(&vstr, l);
+    size_t l0 = l;
+
+    int res = secp256k1_surjectionproof_serialize(ctx, vstr.buf, &l, proof.buf);
+    if(!res){
+        mp_raise_ValueError("Failed to serialize surj proof");
+    }
+    if(l < l0){
+        vstr_cut_tail_bytes(&vstr, l0-l);
+    }
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_surjectionproof_serialize_obj, usecp256k1_surjectionproof_serialize);
 
 // rangeproof_sign(nonce, value, value_commitment, vbf, message, extra, gen, min_value=1, exp=0, min_bits=52)
 STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *args){
@@ -1609,6 +1700,11 @@ STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
 
     { MP_ROM_QSTR(MP_QSTR_rangeproof_sign_to), MP_ROM_PTR(&usecp256k1_rangeproof_sign_to_obj) },
     { MP_ROM_QSTR(MP_QSTR_rangeproof_rewind_from), MP_ROM_PTR(&usecp256k1_rangeproof_rewind_from_obj) },
+
+    { MP_ROM_QSTR(MP_QSTR_surjectionproof_initialize), MP_ROM_PTR(&usecp256k1_surjectionproof_initialize_obj) },
+    { MP_ROM_QSTR(MP_QSTR_surjectionproof_generate), MP_ROM_PTR(&usecp256k1_surjectionproof_generate_obj) },
+    { MP_ROM_QSTR(MP_QSTR_surjectionproof_serialize), MP_ROM_PTR(&usecp256k1_surjectionproof_serialize_obj) },
+
 };
 STATIC MP_DEFINE_CONST_DICT(secp256k1_module_globals, secp256k1_module_globals_table);
 
