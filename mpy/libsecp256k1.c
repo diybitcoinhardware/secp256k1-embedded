@@ -1045,7 +1045,10 @@ STATIC mp_obj_t usecp256k1_pedersen_commit(const mp_obj_t blindarg, mp_obj_t val
         return mp_const_none;
     }
 
-    assert(mp_obj_is_type(valuearg, &mp_type_int));
+    if(!mp_obj_is_int(valuearg)){
+        mp_raise_ValueError("Not int");
+        return mp_const_none;
+    }
     uint64_t value = 0;
     // int to big endian
     byte buf[8] = {0};
@@ -1126,7 +1129,6 @@ STATIC mp_obj_t usecp256k1_pedersen_commitment_parse(const mp_obj_t arg){
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_pedersen_commitment_parse_obj, usecp256k1_pedersen_commitment_parse);
 
 uint64_t get_uint64(mp_obj_t arg){
-    assert(mp_obj_is_type(arg, &mp_type_int));
     uint64_t value = 0;
     // int to big endian
     byte buf[8] = {0};
@@ -1155,18 +1157,45 @@ STATIC mp_obj_t usecp256k1_pedersen_blind_generator_blind_sum(mp_uint_t n_args, 
     mp_obj_list_t *abfs = MP_OBJ_TO_PTR(args[1]);
     mp_obj_list_t *vbfs = MP_OBJ_TO_PTR(args[2]);
     size_t n_total = (size_t)vals->len;
-    // TODO: check all lists have the same length
+
+    if(!mp_obj_is_int(args[3])){
+        mp_raise_ValueError("Not an int");
+        return 0;
+    }
     size_t n_inputs = (size_t)get_uint64(args[3]);
+    if(n_total < 0){
+        mp_raise_ValueError("meh");
+        return mp_const_none;
+    }
+    if(abfs->len != vals->len || vbfs->len != vals->len){
+        mp_raise_ValueError("Arrays should have the same len");
+        return mp_const_none;
+    }
+    vstr_t vstr;
+    mp_buffer_info_t buf;
+    for(int i=0; i<n_inputs; i++){
+        mp_get_buffer_raise(abfs->items[i], &buf, MP_BUFFER_READ);
+        if(buf.len != 32){
+            mp_raise_ValueError("Invalid abf length");
+            return mp_const_none;
+        }
+        mp_get_buffer_raise(vbfs->items[i], &buf, MP_BUFFER_READ);
+        if(buf.len != 32){
+            mp_raise_ValueError("Invalid vbf length");
+            return mp_const_none;
+        }
+        if(!mp_obj_is_int(vals->items[i])){
+            mp_raise_ValueError("Not an int");
+            return 0;
+        }
+    }
 
     uint64_t * value = (uint64_t *)malloc(n_total*sizeof(uint64_t));
     const unsigned char **gens = (const unsigned char **)malloc(n_total*sizeof(unsigned char *));
     unsigned char **bfactors = (unsigned char **)malloc(n_total*sizeof(unsigned char *));
-    mp_buffer_info_t buf;
 
-    vstr_t vstr;
     vstr_init_len(&vstr, 32);
 
-    // TODO: test length of buffers
     for(int i = 0; i < n_total; i++){
         value[i] = get_uint64(vals->items[i]);
         mp_get_buffer(abfs->items[i], &buf, MP_BUFFER_READ);
@@ -1185,6 +1214,7 @@ STATIC mp_obj_t usecp256k1_pedersen_blind_generator_blind_sum(mp_uint_t n_args, 
     free(bfactors);
     if(!res){
         mp_raise_ValueError("Failed to calculate sum");
+        return mp_const_none;
     }
     return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
 }
@@ -1196,17 +1226,34 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_pedersen_blind_generator_blind_sum
 // surjectionproof_initialize(in_assets, asset, seed, tags_to_use=None, iterations=100)
 STATIC mp_obj_t usecp256k1_surjectionproof_initialize(mp_uint_t n_args, const mp_obj_t *args){
     maybe_init_ctx();
-    mp_obj_list_t *in_assets = MP_OBJ_TO_PTR(args[0]);
+    secp256k1_fixed_asset_tag * in_assets_ptr = NULL;
+    mp_obj_list_t *in_assets = NULL;
+    mp_buffer_info_t in_assets_buf;
+    if(mp_get_buffer(args[0], &in_assets_buf, MP_BUFFER_READ)){
+        if(in_assets_buf.len % sizeof(secp256k1_fixed_asset_tag) != 0){
+            mp_raise_ValueError("Invalid length of assets");
+            return mp_const_none;
+        }
+        in_assets_ptr = (secp256k1_fixed_asset_tag *)in_assets_buf.buf;
+    }else{
+        in_assets = MP_OBJ_TO_PTR(args[0]);
+    }
     mp_buffer_info_t asset;
     mp_get_buffer_raise(args[1], &asset, MP_BUFFER_READ);
     mp_buffer_info_t seed;
     mp_get_buffer_raise(args[2], &seed, MP_BUFFER_READ);
     if(asset.len != sizeof(secp256k1_fixed_asset_tag) || seed.len != 32){
         mp_raise_ValueError("Invalid argument length");
+        return mp_const_none;
     }
 
     size_t iterations = 100;
-    size_t n_inputs = in_assets->len;
+    size_t n_inputs = 0;
+    if(in_assets_ptr != NULL){
+        n_inputs = in_assets_buf.len / sizeof(secp256k1_fixed_asset_tag);
+    }else{
+        n_inputs = in_assets->len;
+    }
     // min(3, len(in_assets))
     size_t n_tags_to_use = 3;
     if(n_inputs < n_tags_to_use){
@@ -1218,21 +1265,27 @@ STATIC mp_obj_t usecp256k1_surjectionproof_initialize(mp_uint_t n_args, const mp
     size_t input_index = 0;
 
     mp_buffer_info_t buf;
-    for(int i=0; i<n_inputs; i++){
-        mp_get_buffer_raise(in_assets->items[i], &buf, MP_BUFFER_READ);
-        if(buf.len != 32){
-            mp_raise_ValueError("Invalid argument length");
+    if(in_assets != NULL){
+        for(int i=0; i<n_inputs; i++){
+            mp_get_buffer_raise(in_assets->items[i], &buf, MP_BUFFER_READ);
+            if(buf.len != 32){
+                mp_raise_ValueError("Invalid argument length");
+                return mp_const_none;
+            }
+        }
+        in_assets_ptr = (secp256k1_fixed_asset_tag *)malloc(sizeof(secp256k1_fixed_asset_tag)*n_inputs);
+        for(int i=0; i<n_inputs; i++){
+            mp_get_buffer(in_assets->items[i], &buf, MP_BUFFER_READ);
+            memcpy(in_assets_ptr+(i*sizeof(secp256k1_fixed_asset_tag)), buf.buf, sizeof(secp256k1_fixed_asset_tag));
         }
     }
-    secp256k1_fixed_asset_tag * in_assets_buf = (secp256k1_fixed_asset_tag *)malloc(sizeof(secp256k1_fixed_asset_tag)*n_inputs);
-    for(int i=0; i<n_inputs; i++){
-        mp_get_buffer(in_assets->items[i], &buf, MP_BUFFER_READ);
-        memcpy(in_assets_buf+(i*sizeof(secp256k1_fixed_asset_tag)), buf.buf, sizeof(secp256k1_fixed_asset_tag));
+    int res = secp256k1_surjectionproof_initialize(ctx, (secp256k1_surjectionproof*)proof.buf, &input_index, in_assets_ptr, n_inputs, n_tags_to_use, (secp256k1_fixed_asset_tag *)asset.buf, iterations, seed.buf);
+    if(in_assets!=NULL){
+        free(in_assets_ptr);
     }
-    int res = secp256k1_surjectionproof_initialize(ctx, (secp256k1_surjectionproof*)proof.buf, &input_index, in_assets_buf, n_inputs, n_tags_to_use, (secp256k1_fixed_asset_tag *)asset.buf, iterations, seed.buf);
-    free(in_assets_buf);
     if(!res){
         mp_raise_ValueError("Failed to initialize surj proof");
+        return mp_const_none;
     }
     mp_obj_t items[2];
     items[0] = mp_obj_new_str_from_vstr(&mp_type_bytes, &proof);
@@ -1251,17 +1304,34 @@ STATIC mp_obj_t usecp256k1_surjectionproof_initialize_preallocated(mp_uint_t n_a
     if(prooflen < sizeof(secp256k1_surjectionproof)){
         mp_raise_ValueError("Not enough memory preallocated");
     }
-    mp_obj_list_t *in_assets = MP_OBJ_TO_PTR(args[2]);
+    secp256k1_fixed_asset_tag * in_assets_ptr = NULL;
+    mp_obj_list_t *in_assets = NULL;
+    mp_buffer_info_t in_assets_buf;
+    if(mp_get_buffer(args[2], &in_assets_buf, MP_BUFFER_READ)){
+        if(in_assets_buf.len % sizeof(secp256k1_fixed_asset_tag) != 0){
+            mp_raise_ValueError("Invalid length of assets");
+            return mp_const_none;
+        }
+        in_assets_ptr = (secp256k1_fixed_asset_tag *)in_assets_buf.buf;
+    }else{
+        in_assets = MP_OBJ_TO_PTR(args[2]);
+    }
     mp_buffer_info_t asset;
     mp_get_buffer_raise(args[3], &asset, MP_BUFFER_READ);
     mp_buffer_info_t seed;
     mp_get_buffer_raise(args[4], &seed, MP_BUFFER_READ);
     if(asset.len != sizeof(secp256k1_fixed_asset_tag) || seed.len != 32){
         mp_raise_ValueError("Invalid argument length");
+        return mp_const_none;
     }
 
     size_t iterations = 100;
-    size_t n_inputs = in_assets->len;
+    size_t n_inputs = 0;
+    if(in_assets_ptr != NULL){
+        n_inputs = in_assets_buf.len / sizeof(secp256k1_fixed_asset_tag);
+    }else{
+        n_inputs = in_assets->len;
+    }
     // min(3, len(in_assets))
     size_t n_tags_to_use = 3;
     if(n_inputs < n_tags_to_use){
@@ -1271,21 +1341,27 @@ STATIC mp_obj_t usecp256k1_surjectionproof_initialize_preallocated(mp_uint_t n_a
     size_t input_index = 0;
 
     mp_buffer_info_t buf;
-    for(int i=0; i<n_inputs; i++){
-        mp_get_buffer_raise(in_assets->items[i], &buf, MP_BUFFER_READ);
-        if(buf.len != 32){
-            mp_raise_ValueError("Invalid argument length");
+    if(in_assets != NULL){
+        for(int i=0; i<n_inputs; i++){
+            mp_get_buffer_raise(in_assets->items[i], &buf, MP_BUFFER_READ);
+            if(buf.len != 32){
+                mp_raise_ValueError("Invalid argument length");
+                return mp_const_none;
+            }
+        }
+        in_assets_ptr = (secp256k1_fixed_asset_tag *)malloc(sizeof(secp256k1_fixed_asset_tag)*n_inputs);
+        for(int i=0; i<n_inputs; i++){
+            mp_get_buffer(in_assets->items[i], &buf, MP_BUFFER_READ);
+            memcpy(in_assets_ptr+(i*sizeof(secp256k1_fixed_asset_tag)), buf.buf, sizeof(secp256k1_fixed_asset_tag));
         }
     }
-    secp256k1_fixed_asset_tag * in_assets_buf = (secp256k1_fixed_asset_tag *)malloc(sizeof(secp256k1_fixed_asset_tag)*n_inputs);
-    for(int i=0; i<n_inputs; i++){
-        mp_get_buffer(in_assets->items[i], &buf, MP_BUFFER_READ);
-        memcpy(in_assets_buf+(i*sizeof(secp256k1_fixed_asset_tag)), buf.buf, sizeof(secp256k1_fixed_asset_tag));
+    int res = secp256k1_surjectionproof_initialize(ctx, (secp256k1_surjectionproof*)proofptr, &input_index, in_assets_ptr, n_inputs, n_tags_to_use, (secp256k1_fixed_asset_tag *)asset.buf, iterations, seed.buf);
+    if(in_assets!=NULL){
+        free(in_assets_ptr);
     }
-    int res = secp256k1_surjectionproof_initialize(ctx, (secp256k1_surjectionproof*)proofptr, &input_index, in_assets_buf, n_inputs, n_tags_to_use, (secp256k1_fixed_asset_tag *)asset.buf, iterations, seed.buf);
-    free(in_assets_buf);
     if(!res){
         mp_raise_ValueError("Failed to initialize surj proof");
+        return mp_const_none;
     }
     mp_obj_t items[2];
     items[0] = mp_obj_new_int_from_ull(sizeof(secp256k1_surjectionproof));
@@ -1302,7 +1378,15 @@ STATIC mp_obj_t usecp256k1_surjectionproof_generate(mp_uint_t n_args, const mp_o
     if(mp_get_buffer(args[0], &proof, MP_BUFFER_READ)){
         ptr = (secp256k1_surjectionproof *)proof.buf;
     }else{
-        ptr = (secp256k1_surjectionproof *)get_uint64(args[0]);
+        if(!mp_obj_is_int(args[0])){
+            mp_raise_ValueError("Not int");
+            return mp_const_none;
+        }
+        ptr = (secp256k1_surjectionproof *)(intptr_t)get_uint64(args[0]);
+    }
+    if(!mp_obj_is_int(args[1])){
+        mp_raise_ValueError("Not int");
+        return mp_const_none;
     }
     size_t in_idx = (size_t)get_uint64(args[1]);
     mp_obj_list_t *in_assets = MP_OBJ_TO_PTR(args[2]);
@@ -1314,6 +1398,7 @@ STATIC mp_obj_t usecp256k1_surjectionproof_generate(mp_uint_t n_args, const mp_o
     mp_get_buffer_raise(args[5], &out_abf, MP_BUFFER_READ);
     if(out_abf.len != 32 || asset.len != sizeof(secp256k1_generator) || in_abf.len != 32){
         mp_raise_ValueError("Invalid argument length");
+        return mp_const_none;
     }
 
     size_t n_inputs = in_assets->len;
@@ -1323,6 +1408,7 @@ STATIC mp_obj_t usecp256k1_surjectionproof_generate(mp_uint_t n_args, const mp_o
         mp_get_buffer_raise(in_assets->items[i], &buf, MP_BUFFER_READ);
         if(buf.len != sizeof(secp256k1_generator)){
             mp_raise_ValueError("Invalid gen argument length");
+            return mp_const_none;
         }
     }
     secp256k1_generator * in_assets_buf = (secp256k1_generator *)malloc(sizeof(secp256k1_generator)*n_inputs);
@@ -1334,6 +1420,7 @@ STATIC mp_obj_t usecp256k1_surjectionproof_generate(mp_uint_t n_args, const mp_o
     free(in_assets_buf);
     if(!res){
         mp_raise_ValueError("Failed to generate surj proof");
+        return mp_const_none;
     }
     return args[0];
 }
@@ -1347,9 +1434,12 @@ STATIC mp_obj_t usecp256k1_surjectionproof_serialize(const mp_obj_t arg){
     if(mp_get_buffer(arg, &proof, MP_BUFFER_READ)){
         ptr = (secp256k1_surjectionproof *)proof.buf;
     }else{
-        ptr = (secp256k1_surjectionproof *)get_uint64(arg);
+        if(!mp_obj_is_int(arg)){
+            mp_raise_ValueError("Not int");
+            return mp_const_none;
+        }
+        ptr = (secp256k1_surjectionproof *)(intptr_t)get_uint64(arg);
     }
-
     size_t l = secp256k1_surjectionproof_serialized_size(ctx, ptr);
     vstr_t vstr;
     vstr_init_len(&vstr, l);
@@ -1358,6 +1448,7 @@ STATIC mp_obj_t usecp256k1_surjectionproof_serialize(const mp_obj_t arg){
     int res = secp256k1_surjectionproof_serialize(ctx, vstr.buf, &l, ptr);
     if(!res){
         mp_raise_ValueError("Failed to serialize surj proof");
+        return mp_const_none;
     }
     if(l < l0){
         vstr_cut_tail_bytes(&vstr, l0-l);
@@ -1380,6 +1471,10 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
         return mp_const_none;
     }
 
+    if(!mp_obj_is_int(args[1])){
+        mp_raise_ValueError("Not int");
+        return mp_const_none;
+    }
     uint64_t value = get_uint64(args[1]);
 
     mp_buffer_info_t commitbuf;
@@ -1415,6 +1510,10 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
 
     uint64_t min_value = 1;
     if(n_args > 7){
+        if(!mp_obj_is_int(args[7])){
+            mp_raise_ValueError("Not int");
+            return mp_const_none;
+        }
         min_value = get_uint64(args[7]);
     }
     int exp = 0;
@@ -1457,11 +1556,13 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign_to(mp_uint_t n_args, const mp_obj_t *
     intptr_t memptr = (intptr_t)get_uint64(args[1]);
     intptr_t memlen = (intptr_t)get_uint64(args[2]);
 
-    size_t prooflen = 5200;
+    size_t prooflen = 5800;
 
     if(memlen < prooflen){
         mp_raise_ValueError("Not enough memory for proof allocation.");
+        return mp_const_none;
     }
+    memset((void*) memptr, 0, prooflen);
 
     mp_buffer_info_t nonce;
     mp_get_buffer_raise(args[3], &nonce, MP_BUFFER_READ);
@@ -1628,6 +1729,10 @@ STATIC mp_obj_t usecp256k1_rangeproof_rewind_from(mp_uint_t n_args, const mp_obj
     // stream to read
     mp_obj_t stream = args[0];
     mp_get_stream_raise(stream, MP_STREAM_OP_READ);
+    if(!mp_obj_is_int(args[1])){
+        mp_raise_ValueError("Not int");
+        return mp_const_none;
+    }
     size_t prooflen = (size_t)get_uint64(args[1]);
 
     // preallocated memory
@@ -1639,18 +1744,21 @@ STATIC mp_obj_t usecp256k1_rangeproof_rewind_from(mp_uint_t n_args, const mp_obj
     size_t l = 0;
     if(memlen < memoff){
         mp_raise_ValueError("Not enough memory for proof.");
+        return mp_const_none;
     }
     int err = 0;
     while(l < (prooflen - 64)){
         mp_stream_read_exactly(stream, (byte*)(memptr+l), 64, &err);
         if(err){
             mp_raise_ValueError("Failed to read from stream");
+            return mp_const_none;
         }
         l += 64;
     }
     mp_stream_read_exactly(stream, (byte*)(memptr+l), (prooflen-l), &err);
     if(err){
         mp_raise_ValueError("Failed to read from stream");
+        return mp_const_none;
     }
 
     // mp_buffer_info_t proof;
