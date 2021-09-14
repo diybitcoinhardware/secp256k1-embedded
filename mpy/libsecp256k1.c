@@ -987,6 +987,30 @@ STATIC mp_obj_t usecp256k1_generator_generate_blinded(const mp_obj_t assetarg, c
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(usecp256k1_generator_generate_blinded_obj, usecp256k1_generator_generate_blinded);
 
+STATIC mp_obj_t usecp256k1_generator_generate(const mp_obj_t assetarg){
+    maybe_init_ctx();
+    mp_buffer_info_t assetbuf;
+    mp_get_buffer_raise(assetarg, &assetbuf, MP_BUFFER_READ);
+    if(assetbuf.len != 32){
+        mp_raise_ValueError("Asset should be 32 bytes long");
+        return mp_const_none;
+    }
+
+    secp256k1_generator gen;
+
+    int res = secp256k1_generator_generate(ctx, &gen, assetbuf.buf);
+    if(!res){ // never happens according to the API
+        mp_raise_ValueError("Failed to generate generator");
+        return mp_const_none;
+    }
+    vstr_t vstr;
+    vstr_init_len(&vstr, 64);
+    memcpy(vstr.buf, gen.data, 64);
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_generator_generate_obj, usecp256k1_generator_generate);
+
 // serialize generator
 STATIC mp_obj_t usecp256k1_generator_serialize(const mp_obj_t arg){
     maybe_init_ctx();
@@ -1875,6 +1899,7 @@ STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_EC_COMPRESSED), MP_ROM_INT(SECP256K1_EC_COMPRESSED) },
     { MP_ROM_QSTR(MP_QSTR_EC_UNCOMPRESSED), MP_ROM_INT(SECP256K1_EC_UNCOMPRESSED) },
 
+    { MP_ROM_QSTR(MP_QSTR_generator_generate), MP_ROM_PTR(&usecp256k1_generator_generate_obj) },
     { MP_ROM_QSTR(MP_QSTR_generator_generate_blinded), MP_ROM_PTR(&usecp256k1_generator_generate_blinded_obj) },
     { MP_ROM_QSTR(MP_QSTR_generator_serialize), MP_ROM_PTR(&usecp256k1_generator_serialize_obj) },
     { MP_ROM_QSTR(MP_QSTR_generator_parse), MP_ROM_PTR(&usecp256k1_generator_parse_obj) },
