@@ -1540,6 +1540,10 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
         }
         min_value = get_uint64(args[7]);
     }
+    // special case for dummy outputs
+    if(value == 0){
+        min_value = 0;
+    }
     int exp = 0;
     if(n_args > 8){
         exp = MP_OBJ_SMALL_INT_VALUE(args[8]);
