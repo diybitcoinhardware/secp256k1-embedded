@@ -972,7 +972,7 @@ STATIC mp_obj_t usecp256k1_generator_generate_blinded(const mp_obj_t assetarg, c
         return mp_const_none;
     }
 
-    secp256k1_generator gen;
+    secp256k1_generator gen = { 0 };
 
     int res = secp256k1_generator_generate_blinded(ctx, &gen, assetbuf.buf, abfbuf.buf);
     if(!res){ // never happens according to the API
@@ -996,7 +996,7 @@ STATIC mp_obj_t usecp256k1_generator_generate(const mp_obj_t assetarg){
         return mp_const_none;
     }
 
-    secp256k1_generator gen;
+    secp256k1_generator gen = { 0 };
 
     int res = secp256k1_generator_generate(ctx, &gen, assetbuf.buf);
     if(!res){ // never happens according to the API
@@ -1020,7 +1020,7 @@ STATIC mp_obj_t usecp256k1_generator_serialize(const mp_obj_t arg){
         mp_raise_ValueError("Generator should be 64 bytes long");
         return mp_const_none;
     }
-    secp256k1_generator gen;
+    secp256k1_generator gen = { 0 };
     memcpy(gen.data, buf.buf, 64);
     vstr_t vstr;
     vstr_init_len(&vstr, 33);
@@ -1038,7 +1038,7 @@ STATIC mp_obj_t usecp256k1_generator_parse(const mp_obj_t arg){
         mp_raise_ValueError("Serialized generator should be 33 bytes long");
         return mp_const_none;
     }
-    secp256k1_generator gen;
+    secp256k1_generator gen = { 0 };
     int res = secp256k1_generator_parse(ctx, &gen, buf.buf);
     if(!res){
         mp_raise_ValueError("Failed to parse commitment");
@@ -1093,10 +1093,10 @@ STATIC mp_obj_t usecp256k1_pedersen_commit(const mp_obj_t blindarg, mp_obj_t val
     }
 
 
-    secp256k1_generator gen;
+    secp256k1_generator gen = { 0 };
     memcpy(gen.data, genbuf.buf, 64);
 
-    secp256k1_pedersen_commitment commit;
+    secp256k1_pedersen_commitment commit = { 0 };
 
     int res = secp256k1_pedersen_commit(ctx, &commit, blindbuf.buf, value, genbuf.buf);
     if(!res){
@@ -1119,7 +1119,7 @@ STATIC mp_obj_t usecp256k1_pedersen_commitment_serialize(const mp_obj_t arg){
         mp_raise_ValueError("Pedersen commitment should be 64 bytes long");
         return mp_const_none;
     }
-    secp256k1_pedersen_commitment gen;
+    secp256k1_pedersen_commitment gen = { 0 };
     memcpy(gen.data, buf.buf, 64);
     vstr_t vstr;
     vstr_init_len(&vstr, 33);
@@ -1138,7 +1138,7 @@ STATIC mp_obj_t usecp256k1_pedersen_commitment_parse(const mp_obj_t arg){
         mp_raise_ValueError("Serialized pedersen commitment should be 33 bytes long");
         return mp_const_none;
     }
-    secp256k1_pedersen_commitment gen;
+    secp256k1_pedersen_commitment gen = { 0 };
     int res = secp256k1_pedersen_commitment_parse(ctx, &gen, buf.buf);
     if(!res){
         mp_raise_ValueError("Failed to parse commitment");
@@ -1507,7 +1507,7 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
         mp_raise_ValueError("Commitment should be 64 bytes long");
         return mp_const_none;
     }
-    secp256k1_pedersen_commitment commit;
+    secp256k1_pedersen_commitment commit = { 0 };
     memcpy(commit.data, commitbuf.buf, 64);
 
     mp_buffer_info_t vbf;
@@ -1529,7 +1529,7 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
         mp_raise_ValueError("Commitment should be 64 bytes long");
         return mp_const_none;
     }
-    secp256k1_generator gen;
+    secp256k1_generator gen = { 0 };
     memcpy(gen.data, genbuf.buf, 64);
 
     uint64_t min_value = 1;
@@ -1550,7 +1550,7 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign(mp_uint_t n_args, const mp_obj_t *arg
     }
     int min_bits = 52;
     if(n_args > 9){
-        min_value = MP_OBJ_SMALL_INT_VALUE(args[9]);
+        min_bits = MP_OBJ_SMALL_INT_VALUE(args[9]);
     }
 
     vstr_t vstr;
@@ -1607,7 +1607,7 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign_to(mp_uint_t n_args, const mp_obj_t *
         mp_raise_ValueError("Commitment should be 64 bytes long");
         return mp_const_none;
     }
-    secp256k1_pedersen_commitment commit;
+    secp256k1_pedersen_commitment commit = { 0 };
     memcpy(commit.data, commitbuf.buf, 64);
 
     mp_buffer_info_t vbf;
@@ -1629,7 +1629,7 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign_to(mp_uint_t n_args, const mp_obj_t *
         mp_raise_ValueError("Commitment should be 64 bytes long");
         return mp_const_none;
     }
-    secp256k1_generator gen;
+    secp256k1_generator gen = { 0 };
     memcpy(gen.data, genbuf.buf, 64);
 
     uint64_t min_value = 1;
@@ -1642,7 +1642,12 @@ STATIC mp_obj_t usecp256k1_rangeproof_sign_to(mp_uint_t n_args, const mp_obj_t *
     }
     int min_bits = 52;
     if(n_args > 12){
-        min_value = MP_OBJ_SMALL_INT_VALUE(args[12]);
+        min_bits = MP_OBJ_SMALL_INT_VALUE(args[12]);
+    }
+
+    // special case for dummy outputs
+    if(value == 0){
+        min_value = 0;
     }
 
     int res = secp256k1_rangeproof_sign_preallocated(ctx, (void*)memptr, &prooflen,
@@ -1746,6 +1751,55 @@ STATIC mp_obj_t usecp256k1_rangeproof_rewind(mp_uint_t n_args, const mp_obj_t *a
 }
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_rangeproof_rewind_obj, 5, usecp256k1_rangeproof_rewind);
+
+// rangeproof_verify(proof, value_commitment, script_pubkey, generator)
+STATIC mp_obj_t usecp256k1_rangeproof_verify(mp_uint_t n_args, const mp_obj_t *args){
+    maybe_init_ctx();
+    if(n_args < 4){
+        mp_raise_ValueError("Function requires 4 arguments");
+        return mp_const_none;
+    }
+    mp_buffer_info_t proof;
+    mp_get_buffer_raise(args[0], &proof, MP_BUFFER_READ);
+
+    mp_buffer_info_t value_commitment;
+    mp_get_buffer_raise(args[1], &value_commitment, MP_BUFFER_READ);
+    if(value_commitment.len != 64){
+        mp_raise_ValueError("Value commitment should be 64 bytes long");
+        return mp_const_none;
+    }
+
+    mp_buffer_info_t script_pubkey;
+    mp_get_buffer_raise(args[2], &script_pubkey, MP_BUFFER_READ);
+
+    mp_buffer_info_t generator;
+    mp_get_buffer_raise(args[3], &generator, MP_BUFFER_READ);
+    if(generator.len != 64){
+        mp_raise_ValueError("Generator should be 64 bytes long");
+        return mp_const_none;
+    }
+
+    uint64_t min_value;
+    uint64_t max_value;
+
+    int res = secp256k1_rangeproof_verify(ctx, &min_value, &max_value,
+                            value_commitment.buf, proof.buf, proof.len,
+                            script_pubkey.buf, script_pubkey.len,
+                            generator.buf);
+
+    if(!res){
+        mp_raise_ValueError("Failed to verify the proof");
+        return mp_const_none;
+    }
+
+    // min_value, max_value
+    mp_obj_t items[2];
+    items[0] = mp_obj_new_int_from_ull(min_value);
+    items[1] = mp_obj_new_int_from_ull(max_value);
+    return mp_obj_new_tuple(2, items);
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_rangeproof_verify_obj, 4, usecp256k1_rangeproof_verify);
 
 // rangeproof_rewind_from(stream, len, memptr, memlen, nonce, value_commitment, script_pubkey, generator)
 STATIC mp_obj_t usecp256k1_rangeproof_rewind_from(mp_uint_t n_args, const mp_obj_t *args){
@@ -1914,6 +1968,7 @@ STATIC const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
 
     { MP_ROM_QSTR(MP_QSTR_rangeproof_sign), MP_ROM_PTR(&usecp256k1_rangeproof_sign_obj) },
     { MP_ROM_QSTR(MP_QSTR_rangeproof_rewind), MP_ROM_PTR(&usecp256k1_rangeproof_rewind_obj) },
+    { MP_ROM_QSTR(MP_QSTR_rangeproof_verify), MP_ROM_PTR(&usecp256k1_rangeproof_verify_obj) },
 
     { MP_ROM_QSTR(MP_QSTR_rangeproof_sign_to), MP_ROM_PTR(&usecp256k1_rangeproof_sign_to_obj) },
     { MP_ROM_QSTR(MP_QSTR_rangeproof_rewind_from), MP_ROM_PTR(&usecp256k1_rangeproof_rewind_from_obj) },
